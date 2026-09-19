@@ -74,6 +74,7 @@ const W = {
   evening: 0.3,       // starts 5 to 9 PM your time
   rankedBoth: 0.7,    // both teams ranked (college)
   top10: 0.3,         // a top-10 team is playing (college)
+  top10Showdown: 0.6, // ADDITIONAL, on top of rankedBoth — both teams top-10 specifically
   standings: 2.0,      // max swing from combined record vs .500 (both bad = down, both good = up)
   watchability: 1.5,   // max swing from the WATCHABILITY list below (5=marquee, 1=skip)
   teamWatch: 1.5,      // max swing from TEAM_QUALITY (both teams' brand/power ranking)
@@ -279,7 +280,8 @@ function rate(key, ev){
   if(hour>=17 && hour<=20){ ctx += W.evening; }
   if(isNational && hour>=17) why.push('Primetime'); else if(isNational) why.push('National TV');
   const rk = x=>(x.curatedRank&&x.curatedRank.current)||99;
-  if(rk(home)<26 && rk(away)<26){ ctx += W.rankedBoth; why.push('Ranked matchup'); }
+  if(rk(home)<=10 && rk(away)<=10){ ctx += W.rankedBoth + W.top10Showdown; why.unshift('Top 10 showdown'); }
+  else if(rk(home)<26 && rk(away)<26){ ctx += W.rankedBoth; why.unshift('Ranked matchup'); }
   else if(rk(home)<=10 || rk(away)<=10){ ctx += W.top10; }
 
   // hand-maintained watchability list (see WATCHABILITY above)

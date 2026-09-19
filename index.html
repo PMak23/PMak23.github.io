@@ -75,6 +75,7 @@ const W = {
   rankedBoth: 0.7,    // both teams ranked (college)
   top10: 0.3,         // a top-10 team is playing (college)
   top10Showdown: 0.6, // ADDITIONAL, on top of rankedBoth — both teams top-10 specifically
+  rankedTrailing: 2.0, // max bonus for a ranked team currently behind — scaled by rank AND how close the game still is
   standings: 2.0,      // max swing from combined record vs .500 (both bad = down, both good = up)
   watchability: 1.5,   // max swing from the WATCHABILITY list below (5=marquee, 1=skip)
   teamWatch: 1.5,      // max swing from TEAM_QUALITY (both teams' brand/power ranking)
@@ -183,7 +184,16 @@ async function fetchEspn(path){
     const r = await fetch('/espn/' + path); if(!r.ok) throw new Error(r.status); return await r.json();
   }
 }
-async function fetchLeague(key){ return fetchEspn(SPORTS[key].path); }
+async function fetchLeague(key){
+  const sp = SPORTS[key];
+  const paths = [sp.path, ...(sp.extraPaths||[])];
+  const results = await Promise.all(paths.map(fetchEspn));
+  const seen = new Set(), events = [];
+  results.forEach(r => (r.events||[]).forEach(ev => {
+    if(!seen.has(ev.id)){ seen.add(ev.id); events.push(ev); }
+  }));
+  return { events };
+}
 
 // Playoff-percent by team abbreviation, per sport. Loaded once and cached —
 // standings don't need 30-second refreshes like scores do.
@@ -359,6 +369,14 @@ function rate(key, ev){
     else if(close===0){ why.unshift('Blowout'); }
     const dogLeads = favHome!==null && margin>0 && ((favHome && as>hs) || (!favHome && hs>as));
     if(dogLeads){ r += W.upsetBonus*dogScale; if(dogScale>=0.3) why.unshift('Upset brewing'); }
+    // a ranked team trailing is newsworthy on its own — separate from the odds-based
+    // upset bonus above, since a team's ranking and its betting line don't always agree.
+    // Scaled by how highly ranked (rank 1 = full weight) AND by how close the game
+    // still is, so a ranked team down 40 in garbage time doesn't get an inflated boost.
+    const rankScale = rv => rv<=25 ? (26-rv)/25 : 0;
+    const homeTrailing = margin>0 && as>hs, awayTrailing = margin>0 && hs>as;
+    const trailScale = Math.max(homeTrailing?rankScale(rk(home)):0, awayTrailing?rankScale(rk(away)):0) * close;
+    if(trailScale>0){ r += W.rankedTrailing*trailScale; if(trailScale>=0.15) why.unshift('Upset alert'); }
     r += ctx;
   } else {
     const {ot} = progress(sp, st);

@@ -300,7 +300,6 @@ function rate(key, ev){
     const wr = WATCHABILITY[wKey];
     ctx += (wr-3)/2 * W.watchability; // 3 = no effect, 5 = full boost, 1 = full penalty
     if(wr>=4) why.push('Marquee matchup');
-    else if(wr<=2) why.push('Low interest');
   }
 
   // team-quality/brand adjustment (see TEAM_QUALITY above) — applies to every
@@ -373,10 +372,24 @@ function rate(key, ev){
     // upset bonus above, since a team's ranking and its betting line don't always agree.
     // Scaled by how highly ranked (rank 1 = full weight) AND by how close the game
     // still is, so a ranked team down 40 in garbage time doesn't get an inflated boost.
+    // "Can they still finish the upset" — wider margin tolerance than the base
+    // closeness measure (a 2-score deficit still counts as real appointment
+    // viewing for an upset-in-progress), and weighted MORE as the game gets
+    // later, not less — that's specifically when people tune in to see if it
+    // actually gets finished off.
+    // a ranked team in a genuinely close game is upset tension either way — whether
+    // they're trailing (could lose outright) or clinging to a one-score lead (the
+    // underdog could still complete it). Separate from the odds-based upset bonus
+    // above, since a team's ranking and its betting line don't always agree.
+    // "Can the underdog still finish it" — wider margin tolerance than the base
+    // closeness measure (a 2-score game still counts as real appointment viewing),
+    // and weighted MORE as the game gets later, not less — that's specifically
+    // when people tune in to see if it actually gets finished off.
     const rankScale = rv => rv<=25 ? (26-rv)/25 : 0;
-    const homeTrailing = margin>0 && as>hs, awayTrailing = margin>0 && hs>as;
-    const trailScale = Math.max(homeTrailing?rankScale(rk(home)):0, awayTrailing?rankScale(rk(away)):0) * close;
-    if(trailScale>0){ r += W.rankedTrailing*trailScale; if(trailScale>=0.15) why.unshift('Upset alert'); }
+    const bestRankScale = Math.max(rankScale(rk(home)), rankScale(rk(away)));
+    const catchable = clamp(1 - margin/(sp.unit*5), 0, 1);
+    const upsetTension = bestRankScale * catchable * (0.4 + 0.6*f);
+    if(upsetTension>0){ r += W.rankedTrailing*upsetTension; if(upsetTension>=0.15) why.unshift('Upset alert'); }
     r += ctx;
   } else {
     const {ot} = progress(sp, st);

@@ -27,6 +27,7 @@
   .chip.on{background:var(--chip-on);color:var(--bg)}
   .chip:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
   h2{margin:14px 16px 6px;font-size:13px;font-weight:600;color:var(--ink-3)}
+  h3.day{margin:10px 16px 4px;font-size:12px;font-weight:600;color:var(--ink-3);opacity:.75}
   .game{display:grid;grid-template-columns:74px 1fr;gap:0 12px;align-items:center;
     padding:12px 16px;border-top:1px solid var(--line)}
   .game:last-child{border-bottom:1px solid var(--line)}
@@ -407,7 +408,32 @@ async function refresh(){
   const by = s=>games.filter(g=>!g.err&&g.state===s).sort((a,b)=>b.r-a.r);
   let html='';
   const sec=(title,arr)=>{ if(arr.length) html += `<h2>${title}</h2>` + arr.map(card).join(''); };
-  sec('Live now', by('in')); sec('Coming up', by('pre')); sec('Final', by('post'));
+
+  sec('Live now', by('in'));
+
+  const dayKey = d => d.toDateString(); // local calendar day
+  const dayLabel = d => {
+    const today = new Date(), tmrw = new Date(); tmrw.setDate(today.getDate()+1);
+    if(dayKey(d)===dayKey(today)) return 'Today';
+    if(dayKey(d)===dayKey(tmrw)) return 'Tomorrow';
+    return d.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+  };
+  const upcoming = by('pre');
+  if(upcoming.length){
+    html += '<h2>Coming up</h2>';
+    const groups = new Map(); // dayKey -> {date, games}
+    upcoming.forEach(g=>{
+      const d = new Date(g.ev.date);
+      const k = dayKey(d);
+      if(!groups.has(k)) groups.set(k, {date:d, games:[]});
+      groups.get(k).games.push(g);
+    });
+    [...groups.values()].sort((a,b)=>a.date-b.date).forEach(({date, games})=>{
+      html += `<h3 class="day">${dayLabel(date)}</h3>` + games.map(card).join('');
+    });
+  }
+
+  sec('Final', by('post'));
   if(errs.length) html += `<div class="err">Couldn't load ${errs.join(', ')}. Try again in a minute.</div>`;
   if(!html) html = '<div class="empty">No games today for the sports you picked.</div>';
   list.innerHTML = html;

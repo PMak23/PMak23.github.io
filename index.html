@@ -107,30 +107,28 @@ const DEFAULT_ON = ['nfl','cfb','mlb'];
 // Scale: 5 = must-watch, 3 = average (no effect), 1 = skip it.
 // Only covers games involving a ranked team — leave everything else out.
 const WATCHABILITY = {
-  'OSU-TEX': 5,    // Ohio State vs Texas
-  'MICH-OU': 5,    // Michigan vs Oklahoma
-  'KU-MIZZ': 5,    // Kansas vs Missouri
-  'IOWA-ISU': 4,   // Iowa vs Iowa State
-  'OKST-ORE': 4,   // Oklahoma State vs Oregon
-  'ASU-TXAM': 4,   // Arizona State vs Texas A&M
-  'ALA-UK': 3,     // Alabama vs Kentucky
-  'ARIZ-BYU': 3,   // Arizona vs BYU
-  'GT-TENN': 3,    // Georgia Tech vs Tennessee
-  'ARK-UTAH': 3,   // Arkansas vs Utah
-  'ORST-TTU': 3,   // Oregon State vs Texas Tech
-  'PSU-TEM': 2,    // Penn State vs Temple
-  'ULL-USC': 2,    // Louisiana vs USC
-  'LATECH-LSU': 2, // Louisiana Tech vs LSU
-  'USU-WASH': 1,   // Utah State vs Washington
-  'SMU-UCD': 1,    // SMU vs UC Davis
-  'ND-RICE': 1,    // Notre Dame vs Rice
-  'UGA-WKU': 1,    // Georgia vs Western Kentucky
-  'LOU-VILL': 1,   // Louisville vs Villanova
-  'CLT-MISS': 1,   // Charlotte vs Ole Miss
-  'NORF-UVA': 1,   // Norfolk State vs Virginia
-  'HOU-SOU': 1,    // Houston vs Southern
-  'HOW-IND': 1,    // Howard vs Indiana
-  'FAMU-MIA': 1,   // Florida A&M vs Miami (already played Thu)
+  'LSU-MISS': 5,    // LSU vs Ole Miss
+  'HOU-TTU': 5,     // Houston vs Texas Tech
+  'LOU-SMU': 5,     // Louisville vs SMU
+  'TXAM-UK': 4,     // Texas A&M vs Kentucky
+  'UVA-WVU': 4,     // Virginia vs West Virginia
+  'OU-UNM': 3,      // Oklahoma vs New Mexico
+  'ALA-FSU': 3,     // Alabama vs Florida State
+  'MIA-WAKE': 3,    // Miami vs Wake Forest
+  'MSU-ND': 3,      // Michigan State vs Notre Dame
+  'RUTG-USC': 2,    // Rutgers vs USC
+  'ARK-UGA': 2,     // Arkansas vs Georgia
+  'TEX-UTSA': 2,    // Texas vs UTSA
+  'BYU-CSU': 2,     // BYU vs Colorado State
+  'MIZZ-TROY': 1,   // Missouri vs Troy
+  'KENN-TENN': 1,   // Kennesaw State vs Tennessee
+  'USU-UTAH': 1,    // Utah State vs Utah
+  'BUFF-PSU': 1,    // Buffalo vs Penn State
+  'MICH-UTEP': 1,   // Michigan vs UTEP
+  'IND-WKU': 1,     // Indiana vs Western Kentucky
+  'KENT-OSU': 1,    // Kent State vs Ohio State
+  'IOWA-UNI': 1,    // Iowa vs Northern Iowa
+  'ORE-PRST': 1,    // Oregon vs Portland State (already played Fri)
 };
 
 // Team quality/brand rank per sport, 1 (best/most notable) to N (worst) — lower
@@ -147,10 +145,10 @@ const TEAM_QUALITY = {
     CAR:21, KC:22, NYG:23, NO:24, NYJ:25, PIT:26, LV:27, ATL:28, ARI:29, TEN:30,
     MIA:31, CLE:32,
   },
-  mlb: { // ESPN Power Rankings, Week 24 (Sept 10, 2026) — 30 teams
-    MIL:1, LAD:2, TB:3, ATL:4, NYY:5, PHI:6, CHC:7, BOS:8, SD:9, ARI:10,
-    CWS:11, HOU:12, CLE:13, TOR:14, PIT:15, TEX:16, MIA:17, STL:18, BAL:19, MIN:20,
-    CIN:21, SEA:22, DET:23, WSH:24, NYM:25, KC:26, SF:27, ATH:28, COL:29, LAA:30,
+  mlb: { // theScore Power Rankings, 8th edition (mid-Sept 2026) — 30 teams
+    MIL:1, ATL:2, LAD:3, TB:4, NYY:5, CHC:6, PHI:7, BOS:8, CWS:9, SD:10,
+    CLE:11, HOU:12, ARI:13, MIA:14, TOR:15, BAL:16, TEX:17, SEA:18, PIT:19, STL:20,
+    KC:21, MIN:22, CIN:23, WSH:24, DET:25, NYM:26, SF:27, ATH:28, COL:29, LAA:30,
   },
 };
 // ---------------------------------------------------------------------------

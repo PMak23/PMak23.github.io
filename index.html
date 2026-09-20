@@ -63,9 +63,19 @@
 <script>
 // ---------- TUNING KNOBS: change these numbers to tune the ratings ----------
 const W = {
+  softCeiling: 8.0,     // below this, ratings work exactly as the rest of this file describes.
+  softCeilingSoftness: 2.0, // above softCeiling, HIGHER = harder to reach 10 (needs more stacked raw excitement)
   liveBase: 2.5,      // every live game starts here
   liveClose: 5.0,     // max points for being close
-  earlyFactor: 0.35,  // closeness counts this much at kickoff, 100% at the end
+  // How much closeness counts, at each stage of the game — NOT capped at 1.0x.
+  // A tie late matters more than a tie early, and a tie in overtime matters most
+  // of all, so this is allowed to exceed "full weight." Smoothly interpolated
+  // between these checkpoints, not a hard jump between stages.
+  timeStart: 0.7,     // kickoff / 1st inning
+  timeMid: 1.0,       // halfway through
+  timeLate: 1.3,      // start of the final period / 7th-8th inning
+  timeEnd: 1.5,       // end of regulation / final inning
+  timeOT: 1.7,         // overtime / extra innings
   wireBonus: 1.0,     // late and within one score
   otBonus: 1.5,       // overtime / extra innings
   upsetBonus: 1.0,    // underdog leading (plus up to +1 more for bigger dogs)
@@ -317,6 +327,21 @@ function rate(key, ev){
     }
   }
 
+  // Unified 0..1 "how notable are these teams" signal, reusing whichever data
+  // source this sport already has (TEAM_QUALITY list, or curatedRank for
+  // ranked sports) — neutral 0.5 when neither exists. Used below to scale how
+  // much a late/tied game gets boosted: two average teams tied in the 9th
+  // shouldn't max out the same way two great teams tied in the 9th does.
+  let quality01 = 0.5;
+  if(tq && tq[home.team.abbreviation]!=null && tq[away.team.abbreviation]!=null){
+    const n = Object.keys(tq).length;
+    const toQ = r => 1 - (r-1)/(n-1); // rank1 -> 1, rankN -> 0
+    quality01 = (toQ(tq[home.team.abbreviation]) + toQ(tq[away.team.abbreviation])) / 2;
+  } else if(rk(home)<=25 || rk(away)<=25){
+    const toQ = r => r>25 ? 0.4 : 1-(r-1)/26; // rank1 -> ~1, rank25 -> ~0.08, unranked side -> 0.4
+    quality01 = Math.max(toQ(rk(home)), toQ(rk(away)));
+  }
+
   // playoff stakes: real playoff-percent from standings when we have it,
   // otherwise fall back to each team's win% (0..1, same shape either way) —
   // but the fallback is a much weaker signal, so it counts for less and never
@@ -361,7 +386,17 @@ function rate(key, ev){
   } else if(state==='in'){
     const {f, ot} = progress(sp, st);
     const close = clamp(1 - margin/(sp.unit*3),0,1);
-    r = W.liveBase + W.liveClose*close*(W.earlyFactor + (1-W.earlyFactor)*f);
+    // Smoothly interpolated between the checkpoints in W — see comment up there.
+    // The late-game portion (past the midpoint) is scaled by quality01, so the
+    // full escalation is reserved for genuinely notable teams, not any tied game.
+    const scaledLate = W.timeMid + (W.timeLate-W.timeMid)*quality01;
+    const scaledEnd  = W.timeMid + (W.timeEnd -W.timeMid)*quality01;
+    const scaledOT   = W.timeMid + (W.timeOT  -W.timeMid)*quality01;
+    const timeMult = ot ? scaledOT
+      : f<=0.5  ? W.timeStart + (W.timeMid-W.timeStart)*(f/0.5)
+      : f<=0.75 ? W.timeMid   + (scaledLate-W.timeMid)*((f-0.5)/0.25)
+      :           scaledLate  + (scaledEnd-scaledLate)*((f-0.75)/0.25);
+    r = W.liveBase + W.liveClose*close*timeMult;
     if(ot){ r += W.otBonus; why.unshift(sp.innings?'Extra innings':'Overtime'); }
     else if(f>=0.75 && margin<=sp.unit){ r += W.wireBonus; why.unshift('Down to the wire'); }
     else if(margin<=sp.unit){ why.unshift('One-score game'); }
@@ -400,7 +435,14 @@ function rate(key, ev){
     if(dogWon && dogScale>=0.3) why.unshift('Upset');
     else if(margin<=sp.unit) why.unshift('Close finish');
   }
-  return { r: clamp(Math.round(r*10)/10,1,10), state, home, away, hs, as, st, nets, isNational, why: why.slice(0,3), ev, key };
+  // Soft ceiling: below W.softCeiling, nothing changes. Above it, each extra
+  // point of raw excitement buys progressively less displayed rating, so
+  // stacking several boosts at once (great teams + national TV + tied + late)
+  // pushes toward 10 without casually reaching it — an exact 10.0 stays rare,
+  // and games that would've all flatly clamped to "10" stay distinguishable.
+  const T = W.softCeiling, k = W.softCeilingSoftness;
+  const shown = r<=T ? r : T + (10-T)*(1-Math.exp(-(r-T)/k));
+  return { r: clamp(Math.round(shown*10)/10,1,10), state, home, away, hs, as, st, nets, isNational, why: why.slice(0,3), ev, key };
 }
 
 function cls(r){ return r>=8.5?'r-hot':r>=7?'r-warm':r>=5?'r-mild':'r-cool'; }

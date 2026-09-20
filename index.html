@@ -118,7 +118,7 @@ const W = {
   stakesRange: 10.0,    // ctx this far above stakesFloor shows as Stakes=10
   playoffRace: 2.0,     // max ctx swing when both teams' race intensity (0-1, live-computed or hand list) hits 1.0
   raceMinPlayoffPct: 0.30, // below this real playoff-percent, no race credit regardless of how close the raw standings math looks
-  liveBase: 2.5,      // every live game starts here
+  liveBase: 1.5,      // every live game starts here
   liveClose: 5.0,     // max points for being close
   // How much closeness counts, at each stage of the game — NOT capped at 1.0x.
   // A tie late matters more than a tie early, and a tie in overtime matters most
@@ -153,7 +153,7 @@ const W = {
 // game in that sport. This is a judgment call, not pulled from any data source —
 // tune these numbers freely, they're just a starting point.
 const SPORTS = {
-  nfl:  {name:'NFL',  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:1.8},
+  nfl:  {name:'NFL',  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.8},
   cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.6, hasRanking:true},
   mlb:  {name:'MLB',  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:1, interest:0.1, innings:9},
   nba:  {name:'NBA',  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},

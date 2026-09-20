@@ -116,6 +116,7 @@ const W = {
   qualityCapRange: 4.0, // qualityCapBase + this = ceiling for the most notable teams (quality01=1) — 6+4=10, uncapped
   stakesFloor: -3.0,    // ctx value that shows as Stakes=0
   stakesRange: 10.0,    // ctx this far above stakesFloor shows as Stakes=10
+  playoffRace: 2.0,     // max ctx swing when both teams' race intensity (0-1, live-computed or hand list) hits 1.0
   liveBase: 2.5,      // every live game starts here
   liveClose: 5.0,     // max points for being close
   // How much closeness counts, at each stage of the game — NOT capped at 1.0x.
@@ -193,6 +194,23 @@ const WATCHABILITY = {
   'KENT-OSU': 1,    // Kent State vs Ohio State
   'IOWA-UNI': 1,    // Iowa vs Northern Iowa
   'ORE-PRST': 1,    // Oregon vs Portland State (already played Fri)
+};
+
+// Live playoff-SEEDING race, separate from the standings signal elsewhere in
+// this file. That signal only measures "will this team make the playoffs at
+// all" (playoff-percent) — it goes quiet once a team is basically locked in,
+// even if they're in a real dogfight over SEED, which matters a lot (home
+// field, who you face). This list fills that specific gap. Per-team, 0-5 —
+// listed teams get credit in every game, more when they play another listed
+// team. Moves fast in September — update every few days during the stretch
+// run by searching "mlb playoff picture" or "mlb wild card standings" for
+// the current week, same idea as the CFB/MLB lists above.
+const PLAYOFF_RACE = {
+  CHC:5, PHI:5,  // NL Wild Card: Cubs lead Phillies for the #1 seed
+  SD:4, ARI:4,   // NL Wild Card: Padres/Diamondbacks fighting for the last spot
+  CLE:5, CWS:5,  // AL Central: Cleveland leads Chicago by 1 (as of Sept 20, 2026) — real coin-flip race
+  TEX:4, HOU:4,  // AL West: Rangers/Astros essentially tied
+  TOR:3, MIN:3, BAL:3, // AL Wild Card: crowded chase pack behind the Central/West leaders
 };
 
 // Team quality/brand rank per sport, 1 (best/most notable) to N (worst) — lower
@@ -330,7 +348,74 @@ async function loadStandings(key){
     const map = {};
     for(const abbr in raw){ const v = isPercentScale ? raw[abbr]/100 : raw[abbr]; map[abbr] = clamp((v-0.5)*2,-1,1); }
     standingsCache[key] = Object.keys(map).length ? map : null;
-  }catch(e){ standingsCache[key] = null; }
+    raceCache[key] = computeRaceTightness(j);
+  }catch(e){ standingsCache[key] = null; raceCache[key] = null; }
+}
+
+// Live division/wild-card race tightness, computed directly from the SAME
+// standings fetch above (wins/losses/division) — no hand-maintained list, no
+// staleness. Falls back to PLAYOFF_RACE (see above) only for teams this can't
+// find data for, in case ESPN's response shape doesn't match what's assumed
+// here (unverified from this sandbox — same caveat as playoffPercent above).
+const raceCache = {};
+function computeRaceTightness(standingsJson){
+  const teams = []; // {abbr, wins, losses, division, league}
+  (function walk(node, league, division){
+    if(!node || typeof node!=='object') return;
+    if(Array.isArray(node.entries)){
+      node.entries.forEach(e=>{
+        const abbr = e.team && e.team.abbreviation;
+        if(!abbr) return;
+        const stat = name => { const s=(e.stats||[]).find(x=>typeof x.name==='string' && x.name.toLowerCase()===name); return s ? +s.value : null; };
+        teams.push({ abbr, wins: stat('wins'), losses: stat('losses'), division, league });
+      });
+    }
+    for(const k in node){
+      if(k==='entries') continue;
+      const name = node.name;
+      const isLeague = typeof name==='string' && /american league|national league|^afc$|^nfc$/i.test(name);
+      walk(node[k], isLeague ? name : league, (name && !isLeague) ? name : division);
+    }
+  })(standingsJson, null, null);
+
+  const valid = teams.filter(t=>t.wins!=null && t.losses!=null && t.division);
+  if(valid.length<4) return null; // not enough structure to compute anything meaningful
+
+  const pct = t => t.wins/(t.wins+t.losses);
+  const result = {};
+
+  // Division tightness: how close is each team to 1st in its own division
+  const byDiv = {};
+  valid.forEach(t=>{ (byDiv[t.division] = byDiv[t.division]||[]).push(t); });
+  Object.values(byDiv).forEach(list=>{
+    list.sort((a,b)=>pct(b)-pct(a));
+    const leaderPct = pct(list[0]);
+    list.forEach((t,i)=>{
+      const gamesBack = (leaderPct - pct(t)) * (t.wins+t.losses) / 2;
+      const tight = clamp(1 - gamesBack/6, 0, 1); // within ~6 games counts as a real race
+      result[t.abbr] = Math.max(result[t.abbr]||0, tight * (i<=1 ? 1 : 0.6));
+    });
+  });
+
+  // Wild card tightness: non-division-leaders in each league, how close to the cutline
+  const byLeague = {};
+  valid.forEach(t=>{ (byLeague[t.league] = byLeague[t.league]||[]).push(t); });
+  Object.entries(byLeague).forEach(([league, list])=>{
+    if(!league) return;
+    const divLeaders = new Set(Object.values(byDiv)
+      .filter(d=>d.some(t=>t.league===league))
+      .map(d=>[...d].sort((a,b)=>pct(b)-pct(a))[0].abbr));
+    const wcField = list.filter(t=>!divLeaders.has(t.abbr)).sort((a,b)=>pct(b)-pct(a));
+    if(wcField.length<4) return;
+    const cutlinePct = (pct(wcField[2])+pct(wcField[3]))/2; // between 3rd and 4th wild card
+    wcField.forEach(t=>{
+      const gamesBack = Math.abs(pct(t)-cutlinePct) * (t.wins+t.losses) / 2;
+      const tight = clamp(1 - gamesBack/4, 0, 1); // wild card windows run tighter than division races
+      result[t.abbr] = Math.max(result[t.abbr]||0, tight);
+    });
+  });
+
+  return Object.keys(result).length ? result : null;
 }
 
 // How far along the game is, 0 to 1. Also flags overtime.
@@ -477,6 +562,21 @@ function rate(key, ev){
       if(hasRealStandings && stakes>=0.7) why.push('Playoff race');
     }
     ctx += stakes * (hasRealStandings ? W.standings : W.standings*0.4);
+  }
+
+  // Seeding-race intensity, 0..1 per team — prefers the live computation above
+  // (computeRaceTightness), falls back to the hand-maintained PLAYOFF_RACE list
+  // only for teams that computation doesn't have data for.
+  const raceFor = ab => {
+    const live = raceCache[key];
+    const liveVal = live && live[ab]!=null ? live[ab] : null;
+    const handVal = PLAYOFF_RACE[ab]!=null ? PLAYOFF_RACE[ab]/5 : null;
+    return liveVal!=null ? liveVal : (handVal||0);
+  };
+  const raceHome = raceFor(home.team.abbreviation), raceAway = raceFor(away.team.abbreviation);
+  if(raceHome>0 || raceAway>0){
+    ctx += (raceHome+raceAway)/2 * W.playoffRace;
+    if(raceHome>=0.7 && raceAway>=0.7) why.unshift('Postseason race');
   }
 
   let r, comp01, drama01;

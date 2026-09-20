@@ -51,11 +51,6 @@
   .subscore{display:flex;flex-direction:column;gap:2px}
   .subscore span{font-size:11px;color:var(--ink-3)}
   .subscore b{font-size:17px;color:var(--ink);font-variant-numeric:tabular-nums}
-  .wplabel{font-size:11px;color:var(--ink-3);margin-top:10px}
-  .wpstatus{font-size:12px;color:var(--ink-3);margin-top:10px;font-style:italic}
-  .wpchart{width:100%;height:56px;display:block;margin-top:4px}
-  .wpmid{stroke:var(--line);stroke-width:1;stroke-dasharray:3,3}
-  .wpline{fill:none;stroke:var(--warm);stroke-width:2}
   .empty,.err{padding:18px 16px;color:var(--ink-3);font-size:14px}
   .err{color:#ff9a8f}
   footer{padding:20px 16px 28px;font-size:12px;color:var(--ink-3)}
@@ -217,51 +212,8 @@ const CFB_G5 = new Set([
 // ---------------------------------------------------------------------------
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/';
-// Different part of ESPN's API than the scoreboard/standings above — separate
-// domain, separate uncertainty. Only fetched when a game is actually expanded,
-// never for the whole list, so a slow or unavailable response costs nothing
-// for games nobody taps on.
-const ESPN_CORE = 'https://sports.core.api.espn.com/v2/sports/';
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 let on = load();
-
-// Win-probability history per game, fetched on demand when a card is expanded.
-// undefined = not yet tried, null = tried and unavailable, array = real points.
-// Field name for the home win % isn't 100% confirmed from ESPN directly (this
-// is a different, less-documented part of their API than the scoreboard), so
-// this looks for whichever field looks right rather than assuming one exact
-// name — same approach as the standings playoffPercent fix.
-const probCache = {};
-async function loadProbabilities(key, id){
-  if(probCache[id]!==undefined) return probCache[id];
-  const prefix = SPORTS[key].path.split('/scoreboard')[0]; // e.g. 'football/nfl'
-  try{
-    const r = await fetch(`${ESPN_CORE}${prefix}/events/${id}/competitions/${id}/probabilities?limit=300`);
-    if(!r.ok) throw new Error(r.status);
-    const j = await r.json();
-    const items = j.items || [];
-    const pts = items.map((it,i)=>{
-      const fk = Object.keys(it).find(k=>/home/i.test(k) && /win/i.test(k) && typeof it[k]==='number');
-      if(fk==null) return null;
-      const v = it[fk];
-      return { x:i, y: v>1 ? v : v*100 }; // normalize whichever scale (0-1 or 0-100) to 0-100
-    }).filter(Boolean);
-    probCache[id] = pts.length>=2 ? pts : null;
-  }catch(e){ probCache[id] = null; }
-  return probCache[id];
-}
-function probChart(pts){
-  const w=260, h=64, pad=4;
-  const path = pts.map((p,i)=>{
-    const x = pad + (p.x/(pts.length-1))*(w-2*pad);
-    const y = pad + (1-p.y/100)*(h-2*pad);
-    return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
-  }).join(' ');
-  return `<svg viewBox="0 0 ${w} ${h}" class="wpchart" preserveAspectRatio="none">
-    <line x1="${pad}" y1="${h/2}" x2="${w-pad}" y2="${h/2}" class="wpmid"/>
-    <path d="${path}" class="wpline"/>
-  </svg>`;
-}
 
 function load(){
   try{ const s = JSON.parse(localStorage.getItem('whatsOn.sports')); if(Array.isArray(s)&&s.length) return s; }catch(e){}
@@ -595,13 +547,6 @@ function card(g){
   const netLines = g.nets.map((n,i)=>`<div class="${i===0 && g.isNational?'net-nat':'net-loc'}">${n}</div>`).join('');
   const isOpen = expandedGames.has(g.ev.id);
   const sub = (label,val) => `<div class="subscore"><span>${label}</span><b>${val.toFixed(1)}</b></div>`;
-  let chartHtml = '';
-  if(isOpen && g.state!=='pre'){
-    const pts = probCache[g.ev.id];
-    if(pts===undefined) chartHtml = '<div class="wpstatus">Loading win probability…</div>';
-    else if(pts===null) chartHtml = '<div class="wpstatus">Win probability chart unavailable for this game</div>';
-    else chartHtml = `<div class="wplabel">${g.home.team.abbreviation} win probability</div>${probChart(pts)}`;
-  }
   return `<div class="game ${g.state}${isOpen?' expanded':''}" data-id="${g.ev.id}">
     <div class="rating ${cls(g.r)}">${g.r.toFixed(1)}<small>${SPORTS[g.key].name}</small></div>
     <div>
@@ -609,8 +554,7 @@ function card(g){
       <div class="status">${statusText(g)}</div>
       ${netLines?`<div class="nets">${netLines}</div>`:''}
       ${g.why.length?`<div class="why">${g.why.join(', ')}<span class="chevron">${isOpen?'▲':'▼'}</span></div>`:`<div class="why">&nbsp;<span class="chevron">${isOpen?'▲':'▼'}</span></div>`}
-      <div class="breakdown">${sub('Competitiveness',g.comp)}${sub('Stakes',g.stakes)}${sub('Drama',g.drama)}</div>
-      ${chartHtml}
+      <div class="breakdown">${sub('Competitiveness',g.comp)}${sub('Importance',g.stakes)}${sub('Drama',g.drama)}</div>
     </div></div>`;
 }
 
@@ -667,18 +611,12 @@ async function refresh(){
   lastGames = results.flat();
   renderList(lastGames);
 }
-document.getElementById('list').addEventListener('click', async e=>{
+document.getElementById('list').addEventListener('click', e=>{
   const el = e.target.closest('.game[data-id]');
   if(!el) return;
   const id = el.dataset.id;
-  if(expandedGames.has(id)){ expandedGames.delete(id); renderList(lastGames); return; }
-  expandedGames.add(id);
-  renderList(lastGames); // show expanded immediately (loading state if a chart applies)
-  const g = lastGames.find(x=>x.ev && x.ev.id===id);
-  if(g && g.state!=='pre' && probCache[id]===undefined){
-    await loadProbabilities(g.key, id);
-    renderList(lastGames);
-  }
+  if(expandedGames.has(id)) expandedGames.delete(id); else expandedGames.add(id);
+  renderList(lastGames);
 });
 function schedule(){ clearInterval(timer); if(!document.hidden){ refresh(); timer=setInterval(refresh,30000); } }
 document.addEventListener('visibilitychange', schedule);

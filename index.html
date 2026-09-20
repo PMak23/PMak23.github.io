@@ -17,6 +17,17 @@
     font:16px/1.35 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased}
   body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .layout{display:block}
+  .main{min-width:0}
+  .sidebar{display:none}
+  @media (min-width:900px){
+    .layout{display:flex;align-items:flex-start}
+    .main{flex:1;min-width:0}
+    .sidebar{display:block;flex:0 0 320px;width:320px;border-left:1px solid var(--line);
+      position:sticky;top:0;max-height:100vh;overflow-y:auto}
+  }
+  .sidebar-title{margin:18px 16px 6px;font-size:16px;font-weight:800}
+  .sidebar-empty{margin:0 16px;padding:12px 0;color:var(--ink-3);font-size:13px;line-height:1.4}
   header{padding:18px 16px 10px;display:flex;align-items:baseline;justify-content:space-between}
   h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.01em}
   #updated{font-size:12px;color:var(--ink-3)}
@@ -29,8 +40,13 @@
   h2{margin:14px 16px 6px;font-size:13px;font-weight:600;color:var(--ink-3)}
   h3.day{margin:10px 16px 4px;font-size:12px;font-weight:600;color:var(--ink-3);opacity:.75}
   .game{display:grid;grid-template-columns:74px 1fr;gap:0 12px;align-items:center;
-    padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;-webkit-tap-highlight-color:transparent}
+    padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;-webkit-tap-highlight-color:transparent;
+    position:relative}
   .game:last-child{border-bottom:1px solid var(--line)}
+  .star{position:absolute;top:8px;right:10px;font-size:18px;line-height:1;color:var(--ink-3);
+    background:none;border:0;padding:6px;cursor:pointer;z-index:2;opacity:.7}
+  .star:hover{opacity:1}
+  .star.on{color:var(--warm);opacity:1}
   .rating{font-size:38px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
   .rating small{display:block;font-size:11px;font-weight:600;letter-spacing:0;margin-top:4px;color:var(--ink-3)}
   .r-hot{color:var(--hot)} .r-warm{color:var(--warm)} .r-mild{color:var(--mild)} .r-cool{color:var(--cool)}
@@ -58,6 +74,8 @@
 </style>
 </head>
 <body>
+<div class="layout">
+<div class="main">
 <header>
   <h1>What's On</h1>
   <span id="updated"></span>
@@ -65,6 +83,12 @@
 <div class="chips" id="chips"></div>
 <main id="list"></main>
 <footer>Ratings 1 to 10. Based on how close it is, time left, odds, upsets, playoffs and national TV. Refreshes every 30 seconds.</footer>
+</div>
+<aside class="sidebar">
+  <h2 class="sidebar-title">My Watchlist</h2>
+  <div id="watchlist"></div>
+</aside>
+</div>
 
 <script>
 // ---------- TUNING KNOBS: change these numbers to tune the ratings ----------
@@ -220,6 +244,15 @@ function load(){
   return DEFAULT_ON.slice();
 }
 function save(){ try{ localStorage.setItem('whatsOn.sports', JSON.stringify(on)); }catch(e){} }
+
+// Watchlist — persists across reloads. Old event ids just quietly stop
+// matching anything once that game's day has passed, no cleanup needed.
+const watchlist = new Set(loadWatchlist());
+function loadWatchlist(){
+  try{ const s = JSON.parse(localStorage.getItem('whatsOn.watchlist')); if(Array.isArray(s)) return s; }catch(e){}
+  return [];
+}
+function saveWatchlist(){ try{ localStorage.setItem('whatsOn.watchlist', JSON.stringify([...watchlist])); }catch(e){} }
 
 function renderChips(){
   const box = document.getElementById('chips'); box.innerHTML='';
@@ -546,8 +579,10 @@ function card(g){
   const label = g.state==='pre' ? 'upcoming' : g.state==='in' ? 'live' : 'final';
   const netLines = g.nets.map((n,i)=>`<div class="${i===0 && g.isNational?'net-nat':'net-loc'}">${n}</div>`).join('');
   const isOpen = expandedGames.has(g.ev.id);
+  const isWatched = watchlist.has(g.ev.id);
   const sub = (label,val) => `<div class="subscore"><span>${label}</span><b>${val.toFixed(1)}</b></div>`;
   return `<div class="game ${g.state}${isOpen?' expanded':''}" data-id="${g.ev.id}">
+    <button class="star${isWatched?' on':''}" data-star-id="${g.ev.id}" aria-label="Track this game">${isWatched?'★':'☆'}</button>
     <div class="rating ${cls(g.r)}">${g.r.toFixed(1)}<small>${SPORTS[g.key].name}</small></div>
     <div>
       <div class="teams">${team(g.away,g.as,g.as>=g.hs,g.state)}${team(g.home,g.hs,g.hs>=g.as,g.state)}</div>
@@ -598,6 +633,15 @@ function renderList(games){
   if(!html) html = '<div class="empty">No games today for the sports you picked.</div>';
   list.innerHTML = html;
   document.getElementById('updated').textContent = 'Updated ' + new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+  renderWatchlist(games);
+}
+
+function renderWatchlist(games){
+  const box = document.getElementById('watchlist');
+  if(!box) return;
+  const order = {in:0, pre:1, post:2};
+  const watched = games.filter(g=>!g.err && watchlist.has(g.ev.id)).sort((a,b)=>(order[a.state]-order[b.state]) || (b.r-a.r));
+  box.innerHTML = watched.length ? watched.map(card).join('') : '<div class="sidebar-empty">Tap the star on any game to track it here.</div>';
 }
 
 async function refresh(){
@@ -611,7 +655,15 @@ async function refresh(){
   lastGames = results.flat();
   renderList(lastGames);
 }
-document.getElementById('list').addEventListener('click', e=>{
+document.body.addEventListener('click', e=>{
+  const starEl = e.target.closest('[data-star-id]');
+  if(starEl){
+    const id = starEl.dataset.starId;
+    if(watchlist.has(id)) watchlist.delete(id); else watchlist.add(id);
+    saveWatchlist();
+    renderList(lastGames);
+    return;
+  }
   const el = e.target.closest('.game[data-id]');
   if(!el) return;
   const id = el.dataset.id;

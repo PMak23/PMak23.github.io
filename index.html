@@ -117,6 +117,7 @@ const W = {
   stakesFloor: -3.0,    // ctx value that shows as Stakes=0
   stakesRange: 10.0,    // ctx this far above stakesFloor shows as Stakes=10
   playoffRace: 2.0,     // max ctx swing when both teams' race intensity (0-1, live-computed or hand list) hits 1.0
+  raceMinPlayoffPct: 0.30, // below this real playoff-percent, no race credit regardless of how close the raw standings math looks
   liveBase: 2.5,      // every live game starts here
   liveClose: 5.0,     // max points for being close
   // How much closeness counts, at each stage of the game — NOT capped at 1.0x.
@@ -359,7 +360,7 @@ async function loadStandings(key){
 // here (unverified from this sandbox — same caveat as playoffPercent above).
 const raceCache = {};
 function computeRaceTightness(standingsJson){
-  const teams = []; // {abbr, wins, losses, division, league}
+  const teams = []; // {abbr, wins, losses, division, league, playoffRaw}
   (function walk(node, league, division){
     if(!node || typeof node!=='object') return;
     if(Array.isArray(node.entries)){
@@ -367,7 +368,8 @@ function computeRaceTightness(standingsJson){
         const abbr = e.team && e.team.abbreviation;
         if(!abbr) return;
         const stat = name => { const s=(e.stats||[]).find(x=>typeof x.name==='string' && x.name.toLowerCase()===name); return s ? +s.value : null; };
-        teams.push({ abbr, wins: stat('wins'), losses: stat('losses'), division, league });
+        const pstat = (e.stats||[]).find(s=>typeof s.name==='string' && s.name.toLowerCase().includes('playoff') && typeof s.value==='number');
+        teams.push({ abbr, wins: stat('wins'), losses: stat('losses'), division, league, playoffRaw: pstat ? pstat.value : null });
       });
     }
     for(const k in node){
@@ -414,6 +416,21 @@ function computeRaceTightness(standingsJson){
       result[t.abbr] = Math.max(result[t.abbr]||0, tight);
     });
   });
+
+  // Gate on REAL playoff-percent (already accounts for games remaining, which
+  // the win% math above doesn't) — a tight-looking games-back gap late in the
+  // season can still mean "already essentially eliminated." Only zeroes out
+  // the low end; a team already near-certain to make it (high percent) still
+  // keeps its seeding-race credit from above, since that's the whole point.
+  const pvals = teams.map(t=>t.playoffRaw).filter(v=>v!=null);
+  if(pvals.length){
+    const isPercentScale = pvals.some(v=>v>1.5);
+    valid.forEach(t=>{
+      if(t.playoffRaw==null || result[t.abbr]==null) return;
+      const p = isPercentScale ? t.playoffRaw/100 : t.playoffRaw;
+      if(p < W.raceMinPlayoffPct) result[t.abbr] = 0;
+    });
+  }
 
   return Object.keys(result).length ? result : null;
 }

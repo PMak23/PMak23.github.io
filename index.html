@@ -648,14 +648,19 @@ function rate(key, ev){
     const upsetTension = bestRankScale * catchable * (0.4 + 0.6*f);
     if(upsetTension>0){ r += W.rankedTrailing*upsetTension; if(upsetTension>=0.15) why.unshift('Upset alert'); }
     r += ctx;
-    comp01 = close;
+    // Competitiveness: still primarily the current margin, but a tie/close
+    // score is trusted more the longer it's held up — the same 3-3 tie means
+    // less 3 seconds into the game than it does at the two-minute warning.
+    comp01 = close * (0.4 + 0.6*f);
     // Drama uses the SAME late-game curve but without the quality scaling —
     // urgency is urgency regardless of who's playing; that's Stakes' job.
     const dramaTimeMult = ot ? W.timeOT
       : f<=0.5  ? W.timeStart + (W.timeMid-W.timeStart)*(f/0.5)
       : f<=0.75 ? W.timeMid   + (W.timeLate-W.timeMid)*((f-0.5)/0.25)
       :           W.timeLate  + (W.timeEnd-W.timeLate)*((f-0.75)/0.25);
-    let dramaRaw = clamp(close * (dramaTimeMult-W.timeStart)/(W.timeOT-W.timeStart), 0, 1);
+    // Normalized against its own max (not shifted to a hard zero at kickoff) —
+    // dramaTimeMult is never actually zero, so this shouldn't be either.
+    let dramaRaw = clamp(close * (dramaTimeMult/W.timeOT), 0, 1);
     if(ot) dramaRaw = Math.max(dramaRaw, 0.9);
     if(f>=0.75 && margin<=sp.unit) dramaRaw = Math.max(dramaRaw, 0.7);
     if(dogScale>=0.3) dramaRaw = Math.max(dramaRaw, 0.5+dogScale*0.4);

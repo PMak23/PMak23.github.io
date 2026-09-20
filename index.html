@@ -65,6 +65,8 @@
 const W = {
   softCeiling: 8.0,     // below this, ratings work exactly as the rest of this file describes.
   softCeilingSoftness: 2.0, // above softCeiling, HIGHER = harder to reach 10 (needs more stacked raw excitement)
+  qualityCapBase: 6.0,  // hard ceiling for the least notable teams (quality01=0) — see quality01 below
+  qualityCapRange: 4.0, // qualityCapBase + this = ceiling for the most notable teams (quality01=1) — 6+4=10, uncapped
   liveBase: 2.5,      // every live game starts here
   liveClose: 5.0,     // max points for being close
   // How much closeness counts, at each stage of the game — NOT capped at 1.0x.
@@ -101,11 +103,11 @@ const W = {
 // tune these numbers freely, they're just a starting point.
 const SPORTS = {
   nfl:  {name:'NFL',  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:1.8},
-  cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.6},
+  cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.6, hasRanking:true},
   mlb:  {name:'MLB',  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:1, interest:0.1, innings:9},
   nba:  {name:'NBA',  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
   nhl:  {name:'NHL',  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
-  cbb:  {name:'CBB',  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true},
+  cbb:  {name:'CBB',  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
   wnba: {name:'WNBA', path:'basketball/wnba/scoreboard',                     standingsPath:'basketball/wnba/standings', unit:3, spreadBased:true, interest:-0.3, periods:4, len:10, clockDown:true},
   mls:  {name:'MLS',  path:'soccer/usa.1/scoreboard',                        unit:1, interest:-0.4, periods:2, len:45, clockDown:false},
   epl:  {name:'EPL',  path:'soccer/eng.1/scoreboard',                        unit:1, interest:-0.2, periods:2, len:45, clockDown:false},
@@ -164,6 +166,41 @@ const TEAM_QUALITY = {
     KC:21, MIN:22, CIN:23, WSH:24, DET:25, NYM:26, SF:27, ATH:28, COL:29, LAA:30,
   },
 };
+
+// CFB conference tier — used ONLY when a team is unranked (a ranked team already
+// gets a precise score from its actual rank; this fills in "how big a program is
+// this" for the 100+ unranked teams, so Michigan State-unranked still reads as a
+// real program while East Carolina-unranked doesn't). Based on real 2026 FBS
+// conference membership (ACC/Big Ten/Big 12/SEC + Notre Dame = power; everyone
+// else = g5). Barely needs updating — only if a team actually changes conference.
+const CFB_POWER = new Set([
+  // ACC
+  'BC','CAL','CLEM','DUKE','FSU','GT','LOU','MIA','NCST','UNC','PITT','SMU','STAN','SYR','UVA','VT','WAKE',
+  // Big 12
+  'ARIZ','ASU','BAY','BYU','CIN','COLO','HOU','ISU','KU','KSU','OKST','TCU','TTU','UCF','UTAH','WVU',
+  // Big Ten
+  'ILL','IND','IOWA','MD','MICH','MSU','MINN','NEB','NW','OSU','ORE','PSU','PUR','RUTG','UCLA','USC','WASH','WIS',
+  // SEC
+  'ALA','ARK','AUB','FLA','UGA','UK','LSU','MISS','MSST','MIZZ','OU','SC','TENN','TEX','TXAM','VAN',
+  // Independent
+  'ND',
+]);
+const CFB_G5 = new Set([
+  // American
+  'ARMY','CLT','ECU','FAU','MEM','NAVY','UNT','RICE','TEM','TULN','TLSA','UAB','USF','UTSA',
+  // C-USA
+  'DEL','FIU','JVST','KENN','LIB','MTSU','MOST','NMSU','SHSU','WKU',
+  // MAC
+  'AKR','BALL','BGSU','BUFF','CMU','EMU','KENT','MOH','OHIO','SAC','TOL','UMASS','WMU',
+  // Mountain West
+  'AF','HAW','NEV','UNM','SJSU','UNLV','WYO','NIU','UTEP','NDSU',
+  // Pac-12 (reformed 2026)
+  'ORST','WSU','BSU','CSU','FRES','SDSU','TXST','USU',
+  // Sun Belt
+  'APP','ARST','CCU','GAST','GASO','JMU','ULL','ULM','LT','MRSH','ODU','USA','USM','TROY',
+  // Independent
+  'UCONN',
+]);
 // ---------------------------------------------------------------------------
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/';
@@ -329,17 +366,25 @@ function rate(key, ev){
 
   // Unified 0..1 "how notable are these teams" signal, reusing whichever data
   // source this sport already has (TEAM_QUALITY list, or curatedRank for
-  // ranked sports) — neutral 0.5 when neither exists. Used below to scale how
-  // much a late/tied game gets boosted: two average teams tied in the 9th
-  // shouldn't max out the same way two great teams tied in the 9th does.
-  let quality01 = 0.5;
+  // sports where ranking is a real concept). null = no signal exists at all
+  // for this sport (NHL, WNBA, MLS, EPL) — different from a real signal that
+  // happens to be low (two unranked CFB teams are genuinely informative: most
+  // of 130+ teams aren't ranked, so that's not "neutral," it's "probably not
+  // a marquee program"). Used below to scale the late-game boost AND as a hard
+  // ceiling, so two unranked teams can't stack their way to a 10 on closeness alone.
+  let quality01 = null;
   if(tq && tq[home.team.abbreviation]!=null && tq[away.team.abbreviation]!=null){
     const n = Object.keys(tq).length;
     const toQ = r => 1 - (r-1)/(n-1); // rank1 -> 1, rankN -> 0
     quality01 = (toQ(tq[home.team.abbreviation]) + toQ(tq[away.team.abbreviation])) / 2;
-  } else if(rk(home)<=25 || rk(away)<=25){
-    const toQ = r => r>25 ? 0.4 : 1-(r-1)/26; // rank1 -> ~1, rank25 -> ~0.08, unranked side -> 0.4
-    quality01 = Math.max(toQ(rk(home)), toQ(rk(away)));
+  } else if(sp.hasRanking){
+    // Ranked teams get a precise score from their actual rank. Unranked teams
+    // fall back to CFB conference tier when available (Michigan State-unranked
+    // still reads as a real program; East Carolina-unranked doesn't) — or a flat
+    // baseline for sports where we don't have that (CBB, for now).
+    const confTier = ab => key==='cfb' ? (CFB_POWER.has(ab) ? 0.7 : CFB_G5.has(ab) ? 0.25 : 0.3) : 0.3;
+    const toQ = (ab, r) => r<=25 ? 1-(r-1)/26 : confTier(ab);
+    quality01 = (toQ(home.team.abbreviation, rk(home)) + toQ(away.team.abbreviation, rk(away))) / 2;
   }
 
   // playoff stakes: real playoff-percent from standings when we have it,
@@ -387,11 +432,12 @@ function rate(key, ev){
     const {f, ot} = progress(sp, st);
     const close = clamp(1 - margin/(sp.unit*3),0,1);
     // Smoothly interpolated between the checkpoints in W — see comment up there.
-    // The late-game portion (past the midpoint) is scaled by quality01, so the
+    // The late-game portion (past the midpoint) is scaled by quality, so the
     // full escalation is reserved for genuinely notable teams, not any tied game.
-    const scaledLate = W.timeMid + (W.timeLate-W.timeMid)*quality01;
-    const scaledEnd  = W.timeMid + (W.timeEnd -W.timeMid)*quality01;
-    const scaledOT   = W.timeMid + (W.timeOT  -W.timeMid)*quality01;
+    const qForMult = quality01 ?? 0.5; // neutral only when this sport has no signal at all
+    const scaledLate = W.timeMid + (W.timeLate-W.timeMid)*qForMult;
+    const scaledEnd  = W.timeMid + (W.timeEnd -W.timeMid)*qForMult;
+    const scaledOT   = W.timeMid + (W.timeOT  -W.timeMid)*qForMult;
     const timeMult = ot ? scaledOT
       : f<=0.5  ? W.timeStart + (W.timeMid-W.timeStart)*(f/0.5)
       : f<=0.75 ? W.timeMid   + (scaledLate-W.timeMid)*((f-0.5)/0.25)
@@ -442,7 +488,12 @@ function rate(key, ev){
   // and games that would've all flatly clamped to "10" stay distinguishable.
   const T = W.softCeiling, k = W.softCeilingSoftness;
   const shown = r<=T ? r : T + (10-T)*(1-Math.exp(-(r-T)/k));
-  return { r: clamp(Math.round(shown*10)/10,1,10), state, home, away, hs, as, st, nets, isNational, why: why.slice(0,3), ev, key };
+  // Hard ceiling tied to team quality — only when a REAL signal exists (see
+  // quality01 above). Two unranked teams (quality01 ~0.3) cap around 7.2, no
+  // matter how close or late the game gets; a genuine marquee matchup
+  // (quality01 ~1.0) isn't capped below 10 at all.
+  const qCap = quality01!=null ? (W.qualityCapBase + W.qualityCapRange*quality01) : 10;
+  return { r: clamp(Math.round(Math.min(shown,qCap)*10)/10,1,10), state, home, away, hs, as, st, nets, isNational, why: why.slice(0,3), ev, key };
 }
 
 function cls(r){ return r>=8.5?'r-hot':r>=7?'r-warm':r>=5?'r-mild':'r-cool'; }

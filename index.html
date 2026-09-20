@@ -691,7 +691,11 @@ function rate(key, ev){
   // quality01 above). Two unranked teams (quality01 ~0.3) cap around 7.2, no
   // matter how close or late the game gets; a genuine marquee matchup
   // (quality01 ~1.0) isn't capped below 10 at all.
-  const qCap = quality01!=null ? (W.qualityCapBase + W.qualityCapRange*quality01) : 10;
+  // sqrt curve, not linear — a middling pairing (quality01 ~0.3-0.4, like most
+  // NFL teams that aren't great) still gets most of the ceiling; only a
+  // genuinely bottom-tier pairing (quality01 near 0) stays capped down near
+  // qualityCapBase.
+  const qCap = quality01!=null ? (W.qualityCapBase + W.qualityCapRange*Math.sqrt(quality01)) : 10;
   // Stakes: everything about why this matchup matters, independent of the
   // current score — reuses ctx directly, since that's exactly what ctx already
   // is (sport interest, playoff, national TV, ranked/watchability, team quality,

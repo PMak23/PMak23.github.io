@@ -28,6 +28,18 @@
   }
   .sidebar-title{margin:18px 16px 6px;font-size:16px;font-weight:800}
   .sidebar-empty{margin:0 16px;padding:12px 0;color:var(--ink-3);font-size:13px;line-height:1.4}
+  .mobile-only-list{display:none}
+  .mobiletabs{display:none}
+  @media (max-width:899px){
+    body{padding-bottom:calc(56px + env(safe-area-inset-bottom,0px))}
+    .mobiletabs{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:10;
+      border-top:1px solid var(--line);background:var(--bg);padding-bottom:env(safe-area-inset-bottom,0px)}
+    .mobiletabs button{flex:1;padding:14px 0;background:none;border:0;color:var(--ink-3);
+      font-size:13px;font-weight:600;cursor:pointer}
+    .mobiletabs button.on{color:var(--ink)}
+    body.tab-watchlist #list{display:none}
+    body.tab-watchlist .mobile-only-list{display:block}
+  }
   header{padding:18px 16px 10px;display:flex;align-items:baseline;justify-content:space-between}
   h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.01em}
   #updated{font-size:12px;color:var(--ink-3)}
@@ -89,6 +101,11 @@
   <div id="watchlist"></div>
 </aside>
 </div>
+<div id="mobileWatchlist" class="mobile-only-list"></div>
+<nav class="mobiletabs">
+  <button data-tab="all" class="on">All Games</button>
+  <button data-tab="watchlist">Watchlist</button>
+</nav>
 
 <script>
 // ---------- TUNING KNOBS: change these numbers to tune the ratings ----------
@@ -637,11 +654,13 @@ function renderList(games){
 }
 
 function renderWatchlist(games){
-  const box = document.getElementById('watchlist');
-  if(!box) return;
   const order = {in:0, pre:1, post:2};
   const watched = games.filter(g=>!g.err && watchlist.has(g.ev.id)).sort((a,b)=>(order[a.state]-order[b.state]) || (b.r-a.r));
-  box.innerHTML = watched.length ? watched.map(card).join('') : '<div class="sidebar-empty">Tap the star on any game to track it here.</div>';
+  const watchHtml = watched.length ? watched.map(card).join('') : '<div class="sidebar-empty">Tap the star on any game to track it here.</div>';
+  const sidebarBox = document.getElementById('watchlist');
+  if(sidebarBox) sidebarBox.innerHTML = watchHtml;
+  const mobileBox = document.getElementById('mobileWatchlist');
+  if(mobileBox) mobileBox.innerHTML = watchHtml;
 }
 
 async function refresh(){
@@ -655,7 +674,16 @@ async function refresh(){
   lastGames = results.flat();
   renderList(lastGames);
 }
+let mobileTab = 'all';
+function renderMobileTabs(){
+  document.querySelectorAll('.mobiletabs button').forEach(b=>{
+    b.classList.toggle('on', b.dataset.tab===mobileTab);
+  });
+  document.body.classList.toggle('tab-watchlist', mobileTab==='watchlist');
+}
 document.body.addEventListener('click', e=>{
+  const tabEl = e.target.closest('[data-tab]');
+  if(tabEl){ mobileTab = tabEl.dataset.tab; renderMobileTabs(); return; }
   const starEl = e.target.closest('[data-star-id]');
   if(starEl){
     const id = starEl.dataset.starId;

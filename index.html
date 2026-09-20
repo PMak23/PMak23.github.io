@@ -29,7 +29,7 @@
   h2{margin:14px 16px 6px;font-size:13px;font-weight:600;color:var(--ink-3)}
   h3.day{margin:10px 16px 4px;font-size:12px;font-weight:600;color:var(--ink-3);opacity:.75}
   .game{display:grid;grid-template-columns:74px 1fr;gap:0 12px;align-items:center;
-    padding:12px 16px;border-top:1px solid var(--line)}
+    padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;-webkit-tap-highlight-color:transparent}
   .game:last-child{border-bottom:1px solid var(--line)}
   .rating{font-size:38px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
   .rating small{display:block;font-size:11px;font-weight:600;letter-spacing:0;margin-top:4px;color:var(--ink-3)}
@@ -44,7 +44,13 @@
   .nets{margin-top:2px}
   .net-nat{font-size:13px;font-weight:700;color:var(--ink)}
   .net-loc{font-size:12px;color:var(--ink-3)}
-  .why{font-size:13px;color:var(--ink-3);margin-top:2px}
+  .why{font-size:13px;color:var(--ink-3);margin-top:2px;display:flex;justify-content:space-between;align-items:center}
+  .chevron{font-size:10px;color:var(--ink-3);opacity:.6;margin-left:8px}
+  .breakdown{display:none;gap:16px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .game.expanded .breakdown{display:flex}
+  .subscore{display:flex;flex-direction:column;gap:2px}
+  .subscore span{font-size:11px;color:var(--ink-3)}
+  .subscore b{font-size:17px;color:var(--ink);font-variant-numeric:tabular-nums}
   .empty,.err{padding:18px 16px;color:var(--ink-3);font-size:14px}
   .err{color:#ff9a8f}
   footer{padding:20px 16px 28px;font-size:12px;color:var(--ink-3)}
@@ -67,6 +73,8 @@ const W = {
   softCeilingSoftness: 2.0, // above softCeiling, HIGHER = harder to reach 10 (needs more stacked raw excitement)
   qualityCapBase: 6.0,  // hard ceiling for the least notable teams (quality01=0) — see quality01 below
   qualityCapRange: 4.0, // qualityCapBase + this = ceiling for the most notable teams (quality01=1) — 6+4=10, uncapped
+  stakesFloor: -3.0,    // ctx value that shows as Stakes=0
+  stakesRange: 10.0,    // ctx this far above stakesFloor shows as Stakes=10
   liveBase: 2.5,      // every live game starts here
   liveClose: 5.0,     // max points for being close
   // How much closeness counts, at each stage of the game — NOT capped at 1.0x.
@@ -421,11 +429,12 @@ function rate(key, ev){
     ctx += stakes * (hasRealStandings ? W.standings : W.standings*0.4);
   }
 
-  let r;
+  let r, comp01, drama01;
   if(state==='pre'){
     let close = 0.5;
     if(o){ close = sp.spreadBased ? clamp(1 - spread/14,0,1) : clamp(1 - (ml-100)/150,0,1); }
     r = W.preBase + W.preSpread*close + ctx;
+    comp01 = close; drama01 = close; // pregame "drama" is really just anticipation from the expected closeness
     if(o && close>=0.8) why.unshift('Pick-em'); 
     else if(o && close<=0.25) why.unshift('Heavy favorite');
   } else if(state==='in'){
@@ -472,11 +481,29 @@ function rate(key, ev){
     const upsetTension = bestRankScale * catchable * (0.4 + 0.6*f);
     if(upsetTension>0){ r += W.rankedTrailing*upsetTension; if(upsetTension>=0.15) why.unshift('Upset alert'); }
     r += ctx;
+    comp01 = close;
+    // Drama uses the SAME late-game curve but without the quality scaling —
+    // urgency is urgency regardless of who's playing; that's Stakes' job.
+    const dramaTimeMult = ot ? W.timeOT
+      : f<=0.5  ? W.timeStart + (W.timeMid-W.timeStart)*(f/0.5)
+      : f<=0.75 ? W.timeMid   + (W.timeLate-W.timeMid)*((f-0.5)/0.25)
+      :           W.timeLate  + (W.timeEnd-W.timeLate)*((f-0.75)/0.25);
+    let dramaRaw = clamp(close * (dramaTimeMult-W.timeStart)/(W.timeOT-W.timeStart), 0, 1);
+    if(ot) dramaRaw = Math.max(dramaRaw, 0.9);
+    if(f>=0.75 && margin<=sp.unit) dramaRaw = Math.max(dramaRaw, 0.7);
+    if(dogScale>=0.3) dramaRaw = Math.max(dramaRaw, 0.5+dogScale*0.4);
+    if(upsetTension>=0.15) dramaRaw = Math.max(dramaRaw, 0.5+upsetTension*0.4);
+    drama01 = clamp(dramaRaw, 0, 1);
   } else {
     const {ot} = progress(sp, st);
     const close = clamp(1 - margin/(sp.unit*3),0,1);
     const dogWon = favHome!==null && margin>0 && ((favHome && as>hs) || (!favHome && hs>as));
     r = W.finalBase + W.finalClose*close + (ot?W.finalOT:0) + (dogWon?W.finalUpset*dogScale:0) + ctx*W.finalContext;
+    comp01 = close;
+    let dramaRaw = close;
+    if(ot) dramaRaw = Math.max(dramaRaw, 0.9);
+    if(dogWon && dogScale>=0.3) dramaRaw = Math.max(dramaRaw, 0.5+dogScale*0.4);
+    drama01 = clamp(dramaRaw, 0, 1);
     if(ot) why.unshift(sp.innings?'Extra innings':'Overtime');
     if(dogWon && dogScale>=0.3) why.unshift('Upset');
     else if(margin<=sp.unit) why.unshift('Close finish');
@@ -493,7 +520,15 @@ function rate(key, ev){
   // matter how close or late the game gets; a genuine marquee matchup
   // (quality01 ~1.0) isn't capped below 10 at all.
   const qCap = quality01!=null ? (W.qualityCapBase + W.qualityCapRange*quality01) : 10;
-  return { r: clamp(Math.round(Math.min(shown,qCap)*10)/10,1,10), state, home, away, hs, as, st, nets, isNational, why: why.slice(0,3), ev, key };
+  // Stakes: everything about why this matchup matters, independent of the
+  // current score — reuses ctx directly, since that's exactly what ctx already
+  // is (sport interest, playoff, national TV, ranked/watchability, team quality,
+  // standings). Normalized against a realistic ctx range, not the full
+  // mathematical extreme, so a genuinely stakes-heavy game reaches the top.
+  const stakes01 = clamp((ctx - W.stakesFloor) / W.stakesRange, 0, 1);
+  return { r: clamp(Math.round(Math.min(shown,qCap)*10)/10,1,10),
+    comp: Math.round(comp01*100)/10, drama: Math.round(drama01*100)/10, stakes: Math.round(stakes01*100)/10,
+    state, home, away, hs, as, st, nets, isNational, why: why.slice(0,3), ev, key };
 }
 
 function cls(r){ return r>=8.5?'r-hot':r>=7?'r-warm':r>=5?'r-mild':'r-cool'; }
@@ -510,26 +545,25 @@ function statusText(g){
 function card(g){
   const label = g.state==='pre' ? 'upcoming' : g.state==='in' ? 'live' : 'final';
   const netLines = g.nets.map((n,i)=>`<div class="${i===0 && g.isNational?'net-nat':'net-loc'}">${n}</div>`).join('');
-  return `<div class="game ${g.state}">
+  const isOpen = expandedGames.has(g.ev.id);
+  const sub = (label,val) => `<div class="subscore"><span>${label}</span><b>${val.toFixed(1)}</b></div>`;
+  return `<div class="game ${g.state}${isOpen?' expanded':''}" data-id="${g.ev.id}">
     <div class="rating ${cls(g.r)}">${g.r.toFixed(1)}<small>${SPORTS[g.key].name}</small></div>
     <div>
       <div class="teams">${team(g.away,g.as,g.as>=g.hs,g.state)}${team(g.home,g.hs,g.hs>=g.as,g.state)}</div>
       <div class="status">${statusText(g)}</div>
       ${netLines?`<div class="nets">${netLines}</div>`:''}
-      ${g.why.length?`<div class="why">${g.why.join(', ')}</div>`:''}
+      ${g.why.length?`<div class="why">${g.why.join(', ')}<span class="chevron">${isOpen?'▲':'▼'}</span></div>`:`<div class="why">&nbsp;<span class="chevron">${isOpen?'▲':'▼'}</span></div>`}
+      <div class="breakdown">${sub('Competitiveness',g.comp)}${sub('Stakes',g.stakes)}${sub('Drama',g.drama)}</div>
     </div></div>`;
 }
 
 let timer=null;
-async function refresh(){
+let lastGames = [];
+const expandedGames = new Set(); // game ids currently showing their breakdown — survives refreshes
+
+function renderList(games){
   const list = document.getElementById('list');
-  if(!on.length){ list.innerHTML='<div class="empty">Pick a sport above to see what\'s worth watching.</div>'; return; }
-  on.forEach(k=>{ loadStandings(k); }); // fire-and-forget, cached after first success/failure
-  const results = await Promise.all(on.map(async k=>{
-    try{ const j = await fetchLeague(k); return (j.events||[]).map(ev=>rate(k,ev)); }
-    catch(e){ return [{err:k}]; }
-  }));
-  const games = results.flat();
   const errs = games.filter(g=>g.err).map(g=>SPORTS[g.err].name);
   const by = s=>games.filter(g=>!g.err&&g.state===s).sort((a,b)=>b.r-a.r);
   let html='';
@@ -565,6 +599,25 @@ async function refresh(){
   list.innerHTML = html;
   document.getElementById('updated').textContent = 'Updated ' + new Date().toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
 }
+
+async function refresh(){
+  const list = document.getElementById('list');
+  if(!on.length){ list.innerHTML='<div class="empty">Pick a sport above to see what\'s worth watching.</div>'; return; }
+  on.forEach(k=>{ loadStandings(k); }); // fire-and-forget, cached after first success/failure
+  const results = await Promise.all(on.map(async k=>{
+    try{ const j = await fetchLeague(k); return (j.events||[]).map(ev=>rate(k,ev)); }
+    catch(e){ return [{err:k}]; }
+  }));
+  lastGames = results.flat();
+  renderList(lastGames);
+}
+document.getElementById('list').addEventListener('click', e=>{
+  const el = e.target.closest('.game[data-id]');
+  if(!el) return;
+  const id = el.dataset.id;
+  if(expandedGames.has(id)) expandedGames.delete(id); else expandedGames.add(id);
+  renderList(lastGames);
+});
 function schedule(){ clearInterval(timer); if(!document.hidden){ refresh(); timer=setInterval(refresh,30000); } }
 document.addEventListener('visibilitychange', schedule);
 renderChips(); schedule();

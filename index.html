@@ -384,6 +384,26 @@ function computeRaceTightness(standingsJson){
   const pct = t => t.wins/(t.wins+t.losses);
   const result = {};
 
+  // Wild card tightness needs league grouping, and so does bye-safety below —
+  // build this first so both can use it.
+  const byLeague = {};
+  valid.forEach(t=>{ (byLeague[t.league] = byLeague[t.league]||[]).push(t); });
+
+  // Bye safety: MLB's top 2 seeds in each league get a first-round bye — once a
+  // team is clearly one of the two best in their WHOLE league (not just their
+  // division), the exact order between them barely matters, since both get the
+  // same bye either way. Heavily discounts division-race credit for that team.
+  const byeSafety = {}; // abbr -> 0 (no safety margin) .. 1 (fully safe bye spot)
+  Object.entries(byLeague).forEach(([league, list])=>{
+    if(!league || list.length<3) return;
+    const ranked = list.slice().sort((a,b)=>pct(b)-pct(a));
+    const cutlinePct = pct(ranked[2]); // 3rd-best in the league = first non-bye seed
+    ranked.slice(0,2).forEach(t=>{
+      const gamesAhead = (pct(t)-cutlinePct) * (t.wins+t.losses) / 2;
+      byeSafety[t.abbr] = clamp(gamesAhead/6, 0, 1);
+    });
+  });
+
   // Division tightness: how close is each team to 1st in its own division
   const byDiv = {};
   valid.forEach(t=>{ (byDiv[t.division] = byDiv[t.division]||[]).push(t); });
@@ -392,14 +412,13 @@ function computeRaceTightness(standingsJson){
     const leaderPct = pct(list[0]);
     list.forEach((t,i)=>{
       const gamesBack = (leaderPct - pct(t)) * (t.wins+t.losses) / 2;
-      const tight = clamp(1 - gamesBack/6, 0, 1); // within ~6 games counts as a real race
-      result[t.abbr] = Math.max(result[t.abbr]||0, tight * (i<=1 ? 1 : 0.6));
+      let tight = clamp(1 - gamesBack/6, 0, 1) * (i<=1 ? 1 : 0.6);
+      if(byeSafety[t.abbr]) tight *= (1 - byeSafety[t.abbr]);
+      result[t.abbr] = Math.max(result[t.abbr]||0, tight);
     });
   });
 
   // Wild card tightness: non-division-leaders in each league, how close to the cutline
-  const byLeague = {};
-  valid.forEach(t=>{ (byLeague[t.league] = byLeague[t.league]||[]).push(t); });
   Object.entries(byLeague).forEach(([league, list])=>{
     if(!league) return;
     const divLeaders = new Set(Object.values(byDiv)

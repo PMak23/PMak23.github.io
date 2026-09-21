@@ -216,17 +216,15 @@ const PLAYOFF_RACE = {
 
 // Team quality/brand rank per sport, 1 (best/most notable) to N (worst) — lower
 // is better. Used for every game in that sport via both teams' average rank.
-//   nfl: season-long (source: ESPN/Ben Solak preseason watchability ranking).
-//        Rarely needs updating — redo only if a team's play swings hard.
-//   mlb: IN-SEASON POWER RANKING — this one moves. Update every 1-2 weeks by
-//        searching "mlb power rankings" for the current week (ESPN, MLB.com,
-//        theScore all publish one) and replacing the list below.
+// Both are now IN-SEASON POWER RANKINGS, updated regularly as the season
+// actually plays out — search "[league] power rankings" for the current
+// week (ESPN, Sportsnaut, theScore all publish one) and replace the list.
 const TEAM_QUALITY = {
-  nfl: {
-    CHI:1, LAR:2, DET:3, LAC:4, NE:5, DAL:6, CIN:7, SEA:8, MIN:9, DEN:10,
-    BAL:11, HOU:12, WSH:13, TB:14, PHI:15, BUF:16, JAX:17, GB:18, IND:19, SF:20,
-    CAR:21, KC:22, NYG:23, NO:24, NYJ:25, PIT:26, LV:27, ATL:28, ARI:29, TEN:30,
-    MIA:31, CLE:32,
+  nfl: { // Sportsnaut Power Rankings, Week 2 (post-Week-1 results, Sept 15, 2026) — 32 teams
+    SEA:1, BUF:2, BAL:3, SF:4, KC:5, HOU:6, LAR:7, CHI:8, PHI:9, CIN:10,
+    JAX:11, DET:12, DEN:13, NE:14, MIN:15, GB:16, NYG:17, DAL:18, LAC:19, TB:20,
+    CAR:21, NO:22, PIT:23, ARI:24, WSH:25, LV:26, IND:27, NYJ:28, ATL:29, MIA:30,
+    TEN:31, CLE:32,
   },
   mlb: { // theScore Power Rankings, 8th edition (mid-Sept 2026) — 30 teams
     MIL:1, ATL:2, LAD:3, TB:4, NYY:5, CHC:6, PHI:7, BOS:8, CWS:9, SD:10,

@@ -165,36 +165,41 @@ const SPORTS = {
 };
 const DEFAULT_ON = ['nfl','cfb','mlb'];
 
-// Update this by hand once a week from Covers.com's Watchability Ratings
-// (search "covers.com [sport] top 25 predictions watchability" for this
-// week's page — the URL changes weekly, e.g. .../ncaaf/top-25-predictions-week-3-2026).
+// Update this by hand once a week. Week 4 (Sept 26, 2026) comes from USA TODAY's
+// "Watchability tiers" (Paul Myerberg) because Covers' Week 4 page wouldn't load.
+// Tier 1 = 5, Tier 2 = 4, Tier 3 = 2, Tier 4 = 1 (ranked-team games only for 3/4).
 // Key = both teams' abbreviations AS SHOWN IN THIS APP, sorted alphabetically,
 // joined with a dash, so it doesn't matter who's home/away.
 // Scale: 5 = must-watch, 3 = average (no effect), 1 = skip it.
-// Only covers games involving a ranked team — leave everything else out.
 const WATCHABILITY = {
-  'LSU-MISS': 5,    // LSU vs Ole Miss
-  'HOU-TTU': 5,     // Houston vs Texas Tech
-  'LOU-SMU': 5,     // Louisville vs SMU
-  'TXAM-UK': 4,     // Texas A&M vs Kentucky
-  'UVA-WVU': 4,     // Virginia vs West Virginia
-  'OU-UNM': 3,      // Oklahoma vs New Mexico
-  'ALA-FSU': 3,     // Alabama vs Florida State
-  'MIA-WAKE': 3,    // Miami vs Wake Forest
-  'MSU-ND': 3,      // Michigan State vs Notre Dame
-  'RUTG-USC': 2,    // Rutgers vs USC
-  'ARK-UGA': 2,     // Arkansas vs Georgia
-  'TEX-UTSA': 2,    // Texas vs UTSA
-  'BYU-CSU': 2,     // BYU vs Colorado State
-  'MIZZ-TROY': 1,   // Missouri vs Troy
-  'KENN-TENN': 1,   // Kennesaw State vs Tennessee
-  'USU-UTAH': 1,    // Utah State vs Utah
-  'BUFF-PSU': 1,    // Buffalo vs Penn State
-  'MICH-UTEP': 1,   // Michigan vs UTEP
-  'IND-WKU': 1,     // Indiana vs Western Kentucky
-  'KENT-OSU': 1,    // Kent State vs Ohio State
-  'IOWA-UNI': 1,    // Iowa vs Northern Iowa
-  'ORE-PRST': 1,    // Oregon vs Portland State (already played Fri)
+  'IND-NW':     5,   // Northwestern at Indiana (Fri)
+  'CAL-CLEM':   5,   // Clemson at Cal (Fri)
+  'TENN-TEX':   5,   // Texas at Tennessee
+  'OU-UGA':     5,   // Oklahoma at Georgia
+  'FLA-MISS':   5,   // Ole Miss at Florida
+  'IOWA-MICH':  5,   // Iowa at Michigan
+  'BSU-WMU':    5,   // Boise State at Western Michigan
+  'LSU-TXAM':   5,   // Texas A&M at LSU
+  'ORE-USC':    5,   // Oregon at USC
+  'MIZZ-MSST':  5,   // Missouri at Mississippi State
+  'ILL-OSU':    4,   // Illinois at Ohio State
+  'LOU-WAKE':   4,   // Wake Forest at Louisville
+  'BAY-COLO':   4,   // Colorado at Baylor
+  'MD-UCLA':    4,   // UCLA at Maryland
+  'ND-PUR':     4,   // Notre Dame at Purdue
+  'NMSU-UNM':   4,   // New Mexico at New Mexico State
+  'AUB-VAN':    4,   // Vanderbilt at Auburn
+  'PSU-WIS':    4,   // Wisconsin at Penn State
+  'MSU-NEB':    4,   // Nebraska at Michigan State
+  'ALA-SC':     4,   // South Carolina at Alabama
+  'OKST-WVU':   4,   // Oklahoma State at West Virginia
+  'APP-NCST':   4,   // App State at NC State
+  'ARK-TLSA':   4,   // Tulsa at Arkansas
+  'ISU-UTAH':   2,   // Utah at Iowa State
+  'CMU-MIA':    2,   // Central Michigan at Miami
+  'MINN-WASH':  2,   // Minnesota at Washington
+  'SHSU-TTU':   1,   // Sam Houston at Texas Tech
+  'MOST-SMU':   1,   // Missouri State at SMU
 };
 
 // Live playoff-SEEDING race, separate from the standings signal elsewhere in
@@ -207,11 +212,14 @@ const WATCHABILITY = {
 // run by searching "mlb playoff picture" or "mlb wild card standings" for
 // the current week, same idea as the CFB/MLB lists above.
 const PLAYOFF_RACE = {
-  CHC:5, PHI:5,  // NL Wild Card: Cubs lead Phillies for the #1 seed
-  SD:4, ARI:4,   // NL Wild Card: Padres/Diamondbacks fighting for the last spot
-  CLE:5, CWS:5,  // AL Central: Cleveland leads Chicago by 1 (as of Sept 20, 2026) — real coin-flip race
-  TEX:4, HOU:4,  // AL West: Rangers/Astros essentially tied
-  TOR:3, MIN:3, BAL:3, // AL Wild Card: crowded chase pack behind the Central/West leaders
+  // As of Sept 24, 2026 (MLB.com playoff picture) — 4 days left
+  TEX:5, HOU:5,  // AL West: Rangers lead by 1/2 (Astros own tiebreaker) — loser likely goes home
+  CLE:5, CWS:5,  // AL Central: Guardians lead by 1/2 (Sox own tiebreaker) — winner likely gets a bye
+  SD:4, PHI:5,   // NL Wild Card: Padres/Phillies not yet clinched, seeding wide open
+  CHC:3,         // Clinched, still fighting for WC seed / home field
+  ARI:2,         // 3 back with 4 left — needs a sweep at SD
+  MIL:3, LAD:3,  // NL #1 seed: Brewers can clinch tonight
+  BOS:2,         // AL #5 seed not locked yet
 };
 
 // Team quality/brand rank per sport, 1 (best/most notable) to N (worst) — lower
@@ -220,16 +228,16 @@ const PLAYOFF_RACE = {
 // actually plays out — search "[league] power rankings" for the current
 // week (ESPN, Sportsnaut, theScore all publish one) and replace the list.
 const TEAM_QUALITY = {
-  nfl: { // Sportsnaut Power Rankings, Week 2 (post-Week-1 results, Sept 15, 2026) — 32 teams
-    SEA:1, BUF:2, BAL:3, SF:4, KC:5, HOU:6, LAR:7, CHI:8, PHI:9, CIN:10,
-    JAX:11, DET:12, DEN:13, NE:14, MIN:15, GB:16, NYG:17, DAL:18, LAC:19, TB:20,
-    CAR:21, NO:22, PIT:23, ARI:24, WSH:25, LV:26, IND:27, NYJ:28, ATL:29, MIA:30,
-    TEN:31, CLE:32,
+  nfl: { // NFL.com Power Rankings, Week 3 (post-Week-2, Sept 22, 2026) — 32 teams
+    SEA:1, BUF:2, CIN:3, KC:4, BAL:5, DEN:6, SF:7, LAR:8, JAX:9, PHI:10,
+    HOU:11, DAL:12, DET:13, NO:14, MIN:15, CHI:16, CAR:17, NE:18, IND:19, GB:20,
+    NYG:21, LV:22, CLE:23, TB:24, NYJ:25, PIT:26, TEN:27, WSH:28, LAC:29, ARI:30,
+    ATL:31, MIA:32,
   },
-  mlb: { // theScore Power Rankings, 8th edition (mid-Sept 2026) — 30 teams
-    MIL:1, ATL:2, LAD:3, TB:4, NYY:5, CHC:6, PHI:7, BOS:8, CWS:9, SD:10,
-    CLE:11, HOU:12, ARI:13, MIA:14, TOR:15, BAL:16, TEX:17, SEA:18, PIT:19, STL:20,
-    KC:21, MIN:22, CIN:23, WSH:24, DET:25, NYM:26, SF:27, ATH:28, COL:29, LAA:30,
+  mlb: { // MLB.com Power Rankings, final regular-season edition (Sept 21, 2026) — 30 teams
+    MIL:1, LAD:2, TB:3, ATL:4, NYY:5, CHC:6, BOS:7, SD:8, PHI:9, CLE:10,
+    CWS:11, TEX:12, ARI:13, HOU:14, TOR:15, PIT:16, BAL:17, MIA:18, DET:19, STL:20,
+    WSH:21, SEA:22, NYM:23, MIN:24, CIN:25, KC:26, SF:27, LAA:28, ATH:29, COL:30,
   },
 };
 

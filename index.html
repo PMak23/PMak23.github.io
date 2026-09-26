@@ -167,10 +167,10 @@ const W = {
 // interest = baseline general-audience attention, -1 to 1, applied flat to every
 // game in that sport. This is a judgment call, not pulled from any data source —
 // tune these numbers freely, they're just a starting point.
-const SPORTS = {
+const SPORTS = { // MLB interest lowered 0.1 -> -0.5 on Sept 26 (baseball moneylines always read close, so it needs a lower baseline)
   nfl:  {name:'NFL', games:17,  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.8},
   cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:-0.2, hasRanking:true}, // interest was 0.6; lowered Sept 26 — CFB rated too high vs everything else
-  mlb:  {name:'MLB', daily:true, games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:0.1, innings:9},
+  mlb:  {name:'MLB', daily:true, games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:-0.5, innings:9},
   nba:  {name:'NBA', daily:true, games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
   nhl:  {name:'NHL', daily:true, games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
   cbb:  {name:'CBB', daily:true,  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
@@ -647,6 +647,7 @@ function rate(key, ev){
   // otherwise fall back to each team's win% (0..1, same shape either way) —
   // but the fallback is a much weaker signal, so it counts for less and never
   // claims the confident "Playoff race" / "Non-contenders" label.
+  let stakesCtx = 0; // standings contribution, so the race boost below doesn't double count it
   const stMap = standingsCache[key];
   const hasRealStandings = !!(stMap && stMap[home.team.abbreviation]!=null && stMap[away.team.abbreviation]!=null);
   let pHome=null, pAway=null;
@@ -674,7 +675,8 @@ function rate(key, ev){
       stakes = (tension(pHome)+tension(pAway))/2;
       if(hasRealStandings && stakes>=0.7) why.push('Playoff race');
     }
-    ctx += stakes * (hasRealStandings ? W.standings : W.standings*0.4) * standMult;
+    stakesCtx = stakes * (hasRealStandings ? W.standings : W.standings*0.4) * standMult;
+    ctx += stakesCtx;
   }
 
   // Seeding-race intensity, 0..1 per team — prefers the live computation above
@@ -683,12 +685,14 @@ function rate(key, ev){
   const raceFor = ab => {
     const live = raceCache[key];
     const liveVal = live && live[ab]!=null ? live[ab] : null;
-    const handVal = PLAYOFF_RACE[ab]!=null ? PLAYOFF_RACE[ab]/5 : null;
+    const handVal = (key==='mlb' && PLAYOFF_RACE[ab]!=null) ? PLAYOFF_RACE[ab]/5 : null; // MLB-only list — team codes overlap other sports (TEX = Rangers AND Longhorns)
     return liveVal!=null ? liveVal : (handVal||0);
   };
   const raceHome = raceFor(home.team.abbreviation), raceAway = raceFor(away.team.abbreviation);
   if(raceHome>0 || raceAway>0){
-    ctx += (raceHome+raceAway)/2 * W.playoffRace;
+    // Same reason as the standings boost above (team is in a playoff race), so only
+    // add whatever the race boost adds BEYOND that — not both stacked.
+    ctx += Math.max(0, (raceHome+raceAway)/2 * W.playoffRace - Math.max(0, stakesCtx));
     if(raceHome>=0.7 && raceAway>=0.7) why.unshift('Postseason race');
   }
 

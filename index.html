@@ -138,6 +138,8 @@ const W = {
   otBonus: 1.5,       // overtime / extra innings
   upsetBonus: 1.0,    // underdog leading (plus up to +1 more for bigger dogs)
   playoff: 1.5,       // postseason game
+  seriesElim: 0.5,    // ADDITIONAL, playoff series game where one team can be eliminated
+  seriesDecider: 1.0, // ADDITIONAL (instead of seriesElim), winner-take-all final game of a series
   national: 0.5,      // on national TV
   evening: 0.3,       // starts 5 to 9 PM your time
   rankedBoth: 0.7,    // both teams ranked (college)
@@ -537,7 +539,21 @@ function rate(key, ev){
 
   // context
   let ctx = (sp.interest||0) * W.sportInterest;
-  if(ev.season && ev.season.type === 3){ ctx += W.playoff; why.push('Playoffs'); }
+  if(ev.season && ev.season.type === 3){
+    ctx += W.playoff;
+    // Series context from ESPN (best-of-3/5/7). Single-game rounds (NFL) have
+    // no series data and are unaffected.
+    const sr = c.series;
+    const total = sr && sr.totalCompetitions;
+    const sw = sr && (sr.competitors||[]).map(x=>+x.wins||0);
+    if(total>1 && sw && sw.length===2){
+      const need = Math.ceil(total/2);
+      const onBrink = sw.filter(w=>w===need-1).length; // teams one win from advancing
+      if(onBrink===2){ ctx += W.seriesDecider; why.push(`Game ${total}`); }
+      else if(onBrink===1){ ctx += W.seriesElim; why.push('Elimination game'); }
+      else why.push('Playoffs');
+    } else why.push('Playoffs');
+  }
   // ESPN tags each league's blanket out-of-market streaming package as "national"
   // on every game, which isn't meaningful — ignore those entirely.
   const IGNORE_NETS = ['MLB.TV'];

@@ -141,10 +141,11 @@ const W = {
   rankedTrailing: 2.0, // max bonus for a ranked team currently behind — scaled by rank AND how close the game still is
   standings: 2.0,      // max swing from combined record vs .500 (both bad = down, both good = up)
   watchability: 1.5,   // max swing from the WATCHABILITY list below (5=marquee, 1=skip)
-  teamWatch: 1.5,      // max swing from TEAM_QUALITY (both teams' brand/power ranking)
+  teamWatch: 1.5,
+  rankQuality: 3.0,    // max swing from ranking/conference quality (college) — see quality01      // max swing from TEAM_QUALITY (both teams' brand/power ranking)
   sportInterest: 1.2,  // max swing from each sport's interest baseline (see SPORTS above)
   preBase: 3.0,       // upcoming games start here
-  preSpread: 2.5,     // max points for a tight spread
+  preSpread: 3.5,     // max points for a tight spread (before the team-quality multiplier)
   finalBase: 2.0, finalClose: 4.0, finalOT: 2.0, finalUpset: 1.5, finalContext: 0.7
 };
 
@@ -501,16 +502,19 @@ function rate(key, ev){
   // ESPN tags each league's blanket out-of-market streaming package as "national"
   // on every game, which isn't meaningful — ignore those entirely.
   const IGNORE_NETS = ['MLB.TV'];
+  // Streaming-only services ESPN also tags "national" — still shown as where
+  // to watch, but they don't earn the national TV / primetime bonus.
+  const STREAMING = ['ESPN+'];
   const natSet = new Set(), locSet = new Set();
   (c.broadcasts||[]).forEach(b=>{
     const isNat = (b.market||'').toLowerCase()==='national';
-    (b.names||[]).forEach(n=>{ if(!IGNORE_NETS.includes(n)) (isNat?natSet:locSet).add(n); });
+    (b.names||[]).forEach(n=>{ if(!IGNORE_NETS.includes(n)) ((isNat && !STREAMING.includes(n))?natSet:locSet).add(n); });
   });
   if(!natSet.size && !locSet.size){
     (c.geoBroadcasts||[]).forEach(g=>{
       if(!g.media || !g.media.shortName || IGNORE_NETS.includes(g.media.shortName)) return;
       const isNat = g.market && (g.market.type||'').toLowerCase()==='national';
-      (isNat?natSet:locSet).add(g.media.shortName);
+      ((isNat && !STREAMING.includes(g.media.shortName))?natSet:locSet).add(g.media.shortName);
     });
   }
   locSet.forEach(n=>{ if(natSet.has(n)) locSet.delete(n); });
@@ -567,8 +571,13 @@ function rate(key, ev){
     // still reads as a real program; East Carolina-unranked doesn't) — or a flat
     // baseline for sports where we don't have that (CBB, for now).
     const confTier = ab => key==='cfb' ? (CFB_POWER.has(ab) ? 0.7 : CFB_G5.has(ab) ? 0.25 : 0.3) : 0.3;
-    const toQ = (ab, r) => r<=25 ? 1-(r-1)/26 : confTier(ab);
+    const toQ = (ab, r) => r<=25 ? 1-(r-1)*0.25/24 : confTier(ab);
     quality01 = (toQ(home.team.abbreviation, rk(home)) + toQ(away.team.abbreviation, rk(away))) / 2;
+    // Who's playing now counts toward Importance and the rating itself (pregame
+    // and live), not just the ceiling. 0.5 = neutral; ranked Power teams push up,
+    // G5/unranked-small pairings push down. (Sports with a TEAM_QUALITY list
+    // already get this through W.teamWatch above, so it's not added twice.)
+    ctx += (quality01 - 0.5) * W.rankQuality;
   }
 
   // playoff stakes: real playoff-percent from standings when we have it,
@@ -624,7 +633,12 @@ function rate(key, ev){
   if(state==='pre'){
     let close = 0.5;
     if(o){ close = sp.spreadBased ? clamp(1 - spread/14,0,1) : clamp(1 - (ml-100)/150,0,1); }
-    r = W.preBase + W.preSpread*close + ctx;
+    // A close spread is worth more when the teams matter: scaled 0.6x (weakest
+    // pairing) to 1.4x (two top teams), neutral 1.0x when a sport has no quality
+    // signal. So a close ranked game beats a lopsided marquee game, without also
+    // pushing G5 pick-ems up the list.
+    const spreadMult = quality01!=null ? 0.6 + 0.8*quality01 : 1.0;
+    r = W.preBase + W.preSpread*close*spreadMult + ctx;
     comp01 = close; drama01 = close; // pregame "drama" is really just anticipation from the expected closeness
     if(o && close>=0.8) why.unshift('Pick-em'); 
     else if(o && close<=0.25) why.unshift('Heavy favorite');

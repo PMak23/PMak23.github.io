@@ -112,6 +112,11 @@
 const W = {
   softCeiling: 8.0,     // below this, ratings work exactly as the rest of this file describes.
   softCeilingSoftness: 2.0, // above softCeiling, HIGHER = harder to reach 10 (needs more stacked raw excitement)
+  // Pregame games get their own ceiling: even a "game of the century" tops out
+  // near preMax before kickoff. 9+ and 10 are reserved for games delivering live.
+  preSoftCeiling: 8.0,  // pregame: below this, no compression
+  preMax: 9.2,          // pregame: displayed rating approaches this but never reaches it
+  preSoftness: 2.0,     // pregame: HIGHER = slower approach to preMax
   qualityCapBase: 6.0,  // hard ceiling for the least notable teams (quality01=0) — see quality01 below
   qualityCapRange: 4.0, // qualityCapBase + this = ceiling for the most notable teams (quality01=1) — 6+4=10, uncapped
   stakesFloor: -3.0,    // ctx value that shows as Stakes=0
@@ -141,7 +146,7 @@ const W = {
   rankedTrailing: 2.0, // max bonus for a ranked team currently behind — scaled by rank AND how close the game still is
   standings: 2.0,      // max swing from combined record vs .500 (both bad = down, both good = up)
   watchability: 1.5,   // max swing from the WATCHABILITY list below (5=marquee, 1=skip)
-  teamWatch: 1.5,
+  teamWatch: 1.5,       // max swing from TEAM_QUALITY (both teams' brand/power ranking)
   // Season ramp (pro leagues with a TEAM_QUALITY list only): early on, power
   // rankings drive team strength; standings phase in as games are played.
   // Standings share of the team-strength signal: 0% at game 1 -> rampMid at
@@ -149,7 +154,7 @@ const W = {
   rampPoint: 0.25,     // fraction of season played where rankings/standings are 50/50
   rampMid: 0.5,        // standings share at rampPoint
   rampMax: 0.8,        // standings share from 2x rampPoint onward (rankings keep 20%)
-  rankQuality: 3.0,    // max swing from ranking/conference quality (college) — see quality01      // max swing from TEAM_QUALITY (both teams' brand/power ranking)
+  rankQuality: 1.5,    // max swing from ranking/conference quality (college) — see quality01. Was 3.0; cut Sept 26 because college stacks this on top of ranked bonuses + watchability
   sportInterest: 1.2,  // max swing from each sport's interest baseline (see SPORTS above)
   preBase: 3.0,       // upcoming games start here
   preSpread: 3.5,     // max points for a tight spread (before the team-quality multiplier)
@@ -162,7 +167,7 @@ const W = {
 // tune these numbers freely, they're just a starting point.
 const SPORTS = {
   nfl:  {name:'NFL', games:17,  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.8},
-  cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.6, hasRanking:true},
+  cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:-0.2, hasRanking:true}, // interest was 0.6; lowered Sept 26 — CFB rated too high vs everything else
   mlb:  {name:'MLB', games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:0.1, innings:9},
   nba:  {name:'NBA', games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
   nhl:  {name:'NHL', games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
@@ -179,17 +184,19 @@ const DEFAULT_ON = ['nfl','cfb','mlb'];
 // Key = both teams' abbreviations AS SHOWN IN THIS APP, sorted alphabetically,
 // joined with a dash, so it doesn't matter who's home/away.
 // Scale: 5 = must-watch, 3 = average (no effect), 1 = skip it.
+// Keys = both ESPN abbreviations, sorted A-Z, joined by '-'. Use ESPN's exact codes
+// (TA&M not TXAM, MIZ not MIZZ, NCSU not NCST, IU/NU, BOIS) or the entry silently does nothing.
 const WATCHABILITY = {
-  'IND-NW':     5,   // Northwestern at Indiana (Fri)
+  'IU-NU':     5,   // Northwestern at Indiana (Fri)
   'CAL-CLEM':   5,   // Clemson at Cal (Fri)
   'TENN-TEX':   5,   // Texas at Tennessee
   'OU-UGA':     5,   // Oklahoma at Georgia
   'FLA-MISS':   5,   // Ole Miss at Florida
   'IOWA-MICH':  5,   // Iowa at Michigan
-  'BSU-WMU':    5,   // Boise State at Western Michigan
-  'LSU-TXAM':   5,   // Texas A&M at LSU
+  'BOIS-WMU':    5,   // Boise State at Western Michigan
+  'LSU-TA&M':   5,   // Texas A&M at LSU
   'ORE-USC':    5,   // Oregon at USC
-  'MIZZ-MSST':  5,   // Missouri at Mississippi State
+  'MIZ-MSST':  5,   // Missouri at Mississippi State
   'ILL-OSU':    4,   // Illinois at Ohio State
   'LOU-WAKE':   4,   // Wake Forest at Louisville
   'BAY-COLO':   4,   // Colorado at Baylor
@@ -201,7 +208,7 @@ const WATCHABILITY = {
   'MSU-NEB':    4,   // Nebraska at Michigan State
   'ALA-SC':     4,   // South Carolina at Alabama
   'OKST-WVU':   4,   // Oklahoma State at West Virginia
-  'APP-NCST':   4,   // App State at NC State
+  'APP-NCSU':   4,   // App State at NC State
   'ARK-TLSA':   4,   // Tulsa at Arkansas
   'ISU-UTAH':   2,   // Utah at Iowa State
   'CMU-MIA':    2,   // Central Michigan at Miami
@@ -262,13 +269,13 @@ const TEAM_QUALITY = {
 // else = g5). Barely needs updating — only if a team actually changes conference.
 const CFB_POWER = new Set([
   // ACC
-  'BC','CAL','CLEM','DUKE','FSU','GT','LOU','MIA','NCST','UNC','PITT','SMU','STAN','SYR','UVA','VT','WAKE',
+  'BC','CAL','CLEM','DUKE','FSU','GT','LOU','MIA','NCSU','UNC','PITT','SMU','STAN','SYR','UVA','VT','WAKE',
   // Big 12
   'ARIZ','ASU','BAY','BYU','CIN','COLO','HOU','ISU','KU','KSU','OKST','TCU','TTU','UCF','UTAH','WVU',
   // Big Ten
-  'ILL','IND','IOWA','MD','MICH','MSU','MINN','NEB','NW','OSU','ORE','PSU','PUR','RUTG','UCLA','USC','WASH','WIS',
+  'ILL','IU','IOWA','MD','MICH','MSU','MINN','NEB','NU','OSU','ORE','PSU','PUR','RUTG','UCLA','USC','WASH','WIS',
   // SEC
-  'ALA','ARK','AUB','FLA','UGA','UK','LSU','MISS','MSST','MIZZ','OU','SC','TENN','TEX','TXAM','VAN',
+  'ALA','ARK','AUB','FLA','UGA','UK','LSU','MISS','MSST','MIZ','OU','SC','TENN','TEX','TA&M','VAN',
   // Independent
   'ND',
 ]);
@@ -276,17 +283,17 @@ const CFB_G5 = new Set([
   // American
   'ARMY','CLT','ECU','FAU','MEM','NAVY','UNT','RICE','TEM','TULN','TLSA','UAB','USF','UTSA',
   // C-USA
-  'DEL','FIU','JVST','KENN','LIB','MTSU','MOST','NMSU','SHSU','WKU',
+  'DEL','FIU','JXST','KENN','LIB','MTSU','MOST','NMSU','SHSU','WKU',
   // MAC
-  'AKR','BALL','BGSU','BUFF','CMU','EMU','KENT','MOH','OHIO','SAC','TOL','UMASS','WMU',
+  'AKR','BALL','BGSU','BUF','CMU','EMU','KENT','M-OH','OHIO','SAC','TOL','MASS','WMU',
   // Mountain West
   'AF','HAW','NEV','UNM','SJSU','UNLV','WYO','NIU','UTEP','NDSU',
   // Pac-12 (reformed 2026)
   'ORST','WSU','BSU','CSU','FRES','SDSU','TXST','USU',
   // Sun Belt
-  'APP','ARST','CCU','GAST','GASO','JMU','ULL','ULM','LT','MRSH','ODU','USA','USM','TROY',
+  'APP','ARST','CCU','GAST','GASO','JMU','UL','ULM','LT','MRSH','ODU','USA','USM','TROY',
   // Independent
-  'UCONN',
+  'CONN',
 ]);
 // ---------------------------------------------------------------------------
 
@@ -756,7 +763,9 @@ function rate(key, ev){
   // pushes toward 10 without casually reaching it — an exact 10.0 stays rare,
   // and games that would've all flatly clamped to "10" stay distinguishable.
   const T = W.softCeiling, k = W.softCeilingSoftness;
-  const shown = r<=T ? r : T + (10-T)*(1-Math.exp(-(r-T)/k));
+  const pre = state==='pre';
+  const cT = pre ? W.preSoftCeiling : T, cMax = pre ? W.preMax : 10, cK = pre ? W.preSoftness : k;
+  const shown = r<=cT ? r : cT + (cMax-cT)*(1-Math.exp(-(r-cT)/cK));
   // Hard ceiling tied to team quality — only when a REAL signal exists (see
   // quality01 above). Two unranked teams (quality01 ~0.3) cap around 7.2, no
   // matter how close or late the game gets; a genuine marquee matchup

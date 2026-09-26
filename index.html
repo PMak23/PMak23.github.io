@@ -170,11 +170,11 @@ const W = {
 const SPORTS = {
   nfl:  {name:'NFL', games:17,  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.8},
   cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:-0.2, hasRanking:true}, // interest was 0.6; lowered Sept 26 — CFB rated too high vs everything else
-  mlb:  {name:'MLB', games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:0.1, innings:9},
-  nba:  {name:'NBA', games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
-  nhl:  {name:'NHL', games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
-  cbb:  {name:'CBB',  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
-  wnba: {name:'WNBA', path:'basketball/wnba/scoreboard',                     standingsPath:'basketball/wnba/standings', unit:3, spreadBased:true, interest:-0.3, periods:4, len:10, clockDown:true},
+  mlb:  {name:'MLB', daily:true, games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:0.1, innings:9},
+  nba:  {name:'NBA', daily:true, games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
+  nhl:  {name:'NHL', daily:true, games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
+  cbb:  {name:'CBB', daily:true,  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
+  wnba: {name:'WNBA', daily:true, path:'basketball/wnba/scoreboard',                     standingsPath:'basketball/wnba/standings', unit:3, spreadBased:true, interest:-0.3, periods:4, len:10, clockDown:true},
   mls:  {name:'MLS',  path:'soccer/usa.1/scoreboard',                        unit:1, interest:-0.4, periods:2, len:45, clockDown:false},
   epl:  {name:'EPL',  path:'soccer/eng.1/scoreboard',                        unit:1, interest:-0.2, periods:2, len:45, clockDown:false},
 };
@@ -339,6 +339,14 @@ async function fetchEspn(path){
 async function fetchLeague(key){
   const sp = SPORTS[key];
   const paths = [sp.path, ...(sp.extraPaths||[])];
+  // Daily leagues: ESPN's default scoreboard keeps showing yesterday until well
+  // after midnight, so also ask for today's date (your local date) explicitly.
+  // Default path stays too, so late games still finishing past midnight show up.
+  if(sp.daily){
+    const d = new Date();
+    const ymd = d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+    paths.push(sp.path + (sp.path.includes('?') ? '&' : '?') + 'dates=' + ymd);
+  }
   const results = await Promise.all(paths.map(fetchEspn));
   const seen = new Set(), events = [];
   results.forEach(r => (r.events||[]).forEach(ev => {

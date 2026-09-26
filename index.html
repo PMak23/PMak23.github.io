@@ -212,14 +212,13 @@ const WATCHABILITY = {
 // run by searching "mlb playoff picture" or "mlb wild card standings" for
 // the current week, same idea as the CFB/MLB lists above.
 const PLAYOFF_RACE = {
-  // As of Sept 24, 2026 (MLB.com playoff picture) — 4 days left
-  TEX:5, HOU:5,  // AL West: Rangers lead by 1/2 (Astros own tiebreaker) — loser likely goes home
-  CLE:5, CWS:5,  // AL Central: Guardians lead by 1/2 (Sox own tiebreaker) — winner likely gets a bye
-  SD:4, PHI:5,   // NL Wild Card: Padres/Phillies not yet clinched, seeding wide open
-  CHC:3,         // Clinched, still fighting for WC seed / home field
-  ARI:2,         // 3 back with 4 left — needs a sweep at SD
-  MIL:3, LAD:3,  // NL #1 seed: Brewers can clinch tonight
-  BOS:2,         // AL #5 seed not locked yet
+  // As of Sept 25, 2026 — 3 days left. MIL (#1 overall) and LAD (#2) locked, removed.
+  TEX:5, HOU:5,  // AL West: still open — loser likely goes home
+  CLE:5, CWS:5,  // AL Central: both clinched a spot; winner gets the #2 seed + bye
+  PHI:5,         // NL Wild Card: not clinched yet
+  ARI:4,         // 2 back with 3 left (all at SD), owns tiebreaker over PHI
+  SD:3, CHC:3,   // Both clinched; fighting for top wild card / home field
+  BOS:2,         // AL #5 seed — not confirmed locked yet
 };
 
 // Team quality/brand rank per sport, 1 (best/most notable) to N (worst) — lower

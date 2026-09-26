@@ -142,6 +142,13 @@ const W = {
   standings: 2.0,      // max swing from combined record vs .500 (both bad = down, both good = up)
   watchability: 1.5,   // max swing from the WATCHABILITY list below (5=marquee, 1=skip)
   teamWatch: 1.5,
+  // Season ramp (pro leagues with a TEAM_QUALITY list only): early on, power
+  // rankings drive team strength; standings phase in as games are played.
+  // Standings share of the team-strength signal: 0% at game 1 -> rampMid at
+  // rampPoint of the season -> rampMax at 2x rampPoint, then holds.
+  rampPoint: 0.25,     // fraction of season played where rankings/standings are 50/50
+  rampMid: 0.5,        // standings share at rampPoint
+  rampMax: 0.8,        // standings share from 2x rampPoint onward (rankings keep 20%)
   rankQuality: 3.0,    // max swing from ranking/conference quality (college) — see quality01      // max swing from TEAM_QUALITY (both teams' brand/power ranking)
   sportInterest: 1.2,  // max swing from each sport's interest baseline (see SPORTS above)
   preBase: 3.0,       // upcoming games start here
@@ -154,11 +161,11 @@ const W = {
 // game in that sport. This is a judgment call, not pulled from any data source —
 // tune these numbers freely, they're just a starting point.
 const SPORTS = {
-  nfl:  {name:'NFL',  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.8},
+  nfl:  {name:'NFL', games:17,  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.8},
   cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.6, hasRanking:true},
-  mlb:  {name:'MLB',  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:0.1, innings:9},
-  nba:  {name:'NBA',  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
-  nhl:  {name:'NHL',  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
+  mlb:  {name:'MLB', games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:0.1, innings:9},
+  nba:  {name:'NBA', games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
+  nhl:  {name:'NHL', games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
   cbb:  {name:'CBB',  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
   wnba: {name:'WNBA', path:'basketball/wnba/scoreboard',                     standingsPath:'basketball/wnba/standings', unit:3, spreadBased:true, interest:-0.3, periods:4, len:10, clockDown:true},
   mls:  {name:'MLS',  path:'soccer/usa.1/scoreboard',                        unit:1, interest:-0.4, periods:2, len:45, clockDown:false},
@@ -238,6 +245,12 @@ const TEAM_QUALITY = {
     MIL:1, LAD:2, TB:3, ATL:4, NYY:5, CHC:6, BOS:7, SD:8, PHI:9, CLE:10,
     CWS:11, TEX:12, ARI:13, HOU:14, TOR:15, PIT:16, BAL:17, MIA:18, DET:19, STL:20,
     WSH:21, SEA:22, NYM:23, MIN:24, CIN:25, KC:26, SF:27, LAA:28, ATH:29, COL:30,
+  },
+  nhl: { // The Hockey News Power Rankings, preseason edition (Sept 23, 2026) — 32 teams. THN updates every Wednesday.
+    CAR:1, VGK:2, COL:3, MTL:4, MIN:5, DAL:6, FLA:7, TB:8, BUF:9, EDM:10,
+    UTAH:11, WSH:12, BOS:13, PHI:14, NJ:15, PIT:16, OTT:17, NYI:18, SJ:19, STL:20,
+    ANA:21, CBJ:22, DET:23, TOR:24, NSH:25, LA:26, NYR:27, WPG:28, SEA:29, CHI:30,
+    CGY:31, VAN:32,
   },
 };
 
@@ -480,6 +493,25 @@ function rate(key, ev){
   const hs = +home.score||0, as = +away.score||0, margin = Math.abs(hs-as);
   const why = [];
 
+  // Season ramp — see rampPoint in W. Games played = both teams' average from
+  // their overall record (W-L or W-L-OTL). Preseason counts as 0 games.
+  // rankMult/standMult are both 1.0 at the 50/50 point, so mid-season behavior
+  // matches the old flat weights; early season leans on rankings, late on standings.
+  let rankMult = 1, standMult = 1;
+  if(sp.games && TEAM_QUALITY[key]){
+    const gp = x=>{
+      const r = (x.records||[]).find(rr=>rr.name==='overall');
+      if(!r || !r.summary) return 0;
+      return r.summary.split('-').reduce((a,b)=>a+(+b||0),0);
+    };
+    const played = (ev.season && ev.season.type===1) ? 0 : (gp(home)+gp(away))/2;
+    const p = clamp(played/sp.games, 0, 1);
+    const share = p <= W.rampPoint
+      ? W.rampMid * p/W.rampPoint
+      : Math.min(W.rampMax, W.rampMid + (W.rampMax-W.rampMid) * (p-W.rampPoint)/W.rampPoint);
+    rankMult = (1-share)/0.5; standMult = share/0.5;
+  }
+
   // odds
   const o = (c.odds||[])[0]; let favHome=null, spread=0, ml=0;
   if(o){
@@ -546,7 +578,7 @@ function rate(key, ev){
     const twHome = tq[home.team.abbreviation], twAway = tq[away.team.abbreviation];
     if(twHome!=null && twAway!=null){
       const avgScore = (rankToScore(twHome) + rankToScore(twAway)) / 2;
-      ctx += (avgScore-3)/2 * W.teamWatch;
+      ctx += (avgScore-3)/2 * W.teamWatch * rankMult;
       if(avgScore>=4) why.push('Star power');
       else if(avgScore<=2) why.push('Tough watch');
     }
@@ -611,7 +643,7 @@ function rate(key, ev){
       stakes = (tension(pHome)+tension(pAway))/2;
       if(hasRealStandings && stakes>=0.7) why.push('Playoff race');
     }
-    ctx += stakes * (hasRealStandings ? W.standings : W.standings*0.4);
+    ctx += stakes * (hasRealStandings ? W.standings : W.standings*0.4) * standMult;
   }
 
   // Seeding-race intensity, 0..1 per team — prefers the live computation above

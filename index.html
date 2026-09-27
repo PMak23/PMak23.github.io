@@ -229,13 +229,11 @@ const WATCHABILITY = {
 // run by searching "mlb playoff picture" or "mlb wild card standings" for
 // the current week, same idea as the CFB/MLB lists above.
 const PLAYOFF_RACE = {
-  // As of Sept 25, 2026 — 3 days left. MIL (#1 overall) and LAD (#2) locked, removed.
-  TEX:5, HOU:5,  // AL West: still open — loser likely goes home
-  CLE:5, CWS:5,  // AL Central: both clinched a spot; winner gets the #2 seed + bye
-  PHI:5,         // NL Wild Card: not clinched yet
-  ARI:4,         // 2 back with 3 left (all at SD), owns tiebreaker over PHI
-  SD:3, CHC:3,   // Both clinched; fighting for top wild card / home field
-  BOS:2,         // AL #5 seed — not confirmed locked yet
+  // FINAL DAY, Sept 27, 2026. Everything else is locked (verified vs ESPN standings).
+  HOU:5, TEX:5,  // AL West + #3 seed: HOU clinches with a win (owns tiebreaker); TEX needs win + HOU loss. Loser goes home.
+  PHI:5, ARI:5,  // NL #6 seed: PHI up 1, ARI owns tiebreaker. ARI needs win + PHI loss.
+  // Locked: TB #1, CLE #2, NYY #4, BOS #5, CHW #6 | MIL #1, LAD #2, ATL #3, SD #4, CHC #5.
+  // Regular season ends today, so this list has no effect after tonight.
 };
 
 // Team quality/brand rank per sport, 1 (best/most notable) to N (worst) — lower
@@ -252,7 +250,7 @@ const TEAM_QUALITY = {
   },
   mlb: { // MLB.com Power Rankings, final regular-season edition (Sept 21, 2026) — 30 teams
     MIL:1, LAD:2, TB:3, ATL:4, NYY:5, CHC:6, BOS:7, SD:8, PHI:9, CLE:10,
-    CWS:11, TEX:12, ARI:13, HOU:14, TOR:15, PIT:16, BAL:17, MIA:18, DET:19, STL:20,
+    CHW:11, TEX:12, ARI:13, HOU:14, TOR:15, PIT:16, BAL:17, MIA:18, DET:19, STL:20,
     WSH:21, SEA:22, NYM:23, MIN:24, CIN:25, KC:26, SF:27, LAA:28, ATH:29, COL:30,
   },
   nhl: { // The Hockey News Power Rankings, preseason edition (Sept 23, 2026) — 32 teams. THN updates every Wednesday.

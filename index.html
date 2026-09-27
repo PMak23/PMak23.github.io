@@ -298,6 +298,7 @@ const CFB_G5 = new Set([
 // ---------------------------------------------------------------------------
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/';
+const ESPN_STANDINGS = 'https://site.api.espn.com/apis/v2/sports/'; // exact-match 'playoffPercent' (not 'playoffSeed')
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 let on = load();
 
@@ -361,7 +362,11 @@ async function loadStandings(key){
   const sp = SPORTS[key];
   if(!sp.standingsPath || standingsCache[key]!==undefined) return;
   try{
-    const j = await fetchEspn(sp.standingsPath);
+    // Standings live on ESPN's /apis/v2/ path. The /apis/site/v2/ path that
+    // scores use only returns a "Full Standings" link for standings, which
+    // silently left this cache empty (fixed Sept 27, 2026).
+    const r = await fetch(ESPN_STANDINGS + sp.standingsPath); if(!r.ok) throw new Error(r.status);
+    const j = await r.json();
     const raw = {};
     (function walk(node){
       if(!node || typeof node!=='object') return;
@@ -369,7 +374,7 @@ async function loadStandings(key){
         node.entries.forEach(e=>{
           const abbr = e.team && e.team.abbreviation;
           if(!abbr) return;
-          const stat = (e.stats||[]).find(s=>typeof s.name==='string' && s.name.toLowerCase().includes('playoff') && typeof s.value==='number');
+          const stat = (e.stats||[]).find(s=>typeof s.name==='string' && s.name.toLowerCase()==='playoffpercent' && typeof s.value==='number');
           if(stat) raw[abbr] = stat.value;
         });
       }
@@ -383,7 +388,9 @@ async function loadStandings(key){
     const map = {};
     for(const abbr in raw){ const v = isPercentScale ? raw[abbr]/100 : raw[abbr]; map[abbr] = clamp((v-0.5)*2,-1,1); }
     standingsCache[key] = Object.keys(map).length ? map : null;
-    raceCache[key] = computeRaceTightness(j);
+    // MLB only for now: other leagues' standings come back grouped by conference,
+    // and early-season games-back math would hand out fake race boosts.
+    raceCache[key] = key==='mlb' ? computeRaceTightness(j) : null;
   }catch(e){ standingsCache[key] = null; raceCache[key] = null; }
 }
 
@@ -402,7 +409,7 @@ function computeRaceTightness(standingsJson){
         const abbr = e.team && e.team.abbreviation;
         if(!abbr) return;
         const stat = name => { const s=(e.stats||[]).find(x=>typeof x.name==='string' && x.name.toLowerCase()===name); return s ? +s.value : null; };
-        const pstat = (e.stats||[]).find(s=>typeof s.name==='string' && s.name.toLowerCase().includes('playoff') && typeof s.value==='number');
+        const pstat = (e.stats||[]).find(s=>typeof s.name==='string' && s.name.toLowerCase()==='playoffpercent' && typeof s.value==='number');
         teams.push({ abbr, wins: stat('wins'), losses: stat('losses'), division, league, playoffRaw: pstat ? pstat.value : null });
       });
     }
@@ -684,14 +691,22 @@ function rate(key, ev){
     const live = raceCache[key];
     const liveVal = live && live[ab]!=null ? live[ab] : null;
     const handVal = (key==='mlb' && PLAYOFF_RACE[ab]!=null) ? PLAYOFF_RACE[ab]/5 : null; // MLB-only list — team codes overlap other sports (TEX = Rangers AND Longhorns)
+    // MLB: when the hand list has entries, it's authoritative for EVERY MLB team.
+    // The live math only sees games-back, not clinches/locked seeds, so on the
+    // final day it was crediting locked teams (BOS/CHC) and burying HOU/TEX.
+    if(key==='mlb' && Object.keys(PLAYOFF_RACE).length) return handVal||0;
     return liveVal!=null ? liveVal : (handVal||0);
   };
   const raceHome = raceFor(home.team.abbreviation), raceAway = raceFor(away.team.abbreviation);
   if(raceHome>0 || raceAway>0){
     // Same reason as the standings boost above (team is in a playoff race), so only
     // add whatever the race boost adds BEYOND that — not both stacked.
-    ctx += Math.max(0, (raceHome+raceAway)/2 * W.playoffRace - Math.max(0, stakesCtx));
-    if(raceHome>=0.7 && raceAway>=0.7) why.unshift('Postseason race');
+    // One team playing for its season is enough to make the game matter, so lean
+    // on the bigger of the two (80/20) instead of a straight average, which cut
+    // a win-and-in game in half whenever the opponent had nothing to play for.
+    const raceGame = 0.8*Math.max(raceHome,raceAway) + 0.2*Math.min(raceHome,raceAway);
+    ctx += Math.max(0, raceGame * W.playoffRace - Math.max(0, stakesCtx));
+    if(Math.max(raceHome,raceAway)>=0.7) why.unshift('Postseason race');
   }
 
   let r, comp01, drama01;

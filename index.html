@@ -140,8 +140,8 @@ const W = {
   playoff: 1.5,       // postseason game
   seriesElim: 0.5,    // ADDITIONAL, playoff series game where one team can be eliminated
   seriesDecider: 1.0, // ADDITIONAL (instead of seriesElim), winner-take-all final game of a series
-  national: 0.5,      // on national TV
-  evening: 0.3,       // starts 5 to 9 PM your time
+  national: 0.2,      // on national TV (kept minimal on purpose)
+  evening: 0.1,       // starts 5 to 9 PM your time (kept minimal on purpose)
   rankedBoth: 0.7,    // both teams ranked (college)
   top10: 0.3,         // a top-10 team is playing (college)
   top10Showdown: 0.6, // ADDITIONAL, on top of rankedBoth — both teams top-10 specifically
@@ -590,7 +590,6 @@ function rate(key, ev){
   if(isNational){ ctx += W.national; }
   const hour = new Date(ev.date).getHours();
   if(hour>=17 && hour<=20){ ctx += W.evening; }
-  if(isNational && hour>=17) why.push('Primetime'); else if(isNational) why.push('National TV');
   const rk = x=>(x.curatedRank&&x.curatedRank.current)||99;
   if(rk(home)<=10 && rk(away)<=10){ ctx += W.rankedBoth + W.top10Showdown; why.unshift('Top 10 showdown'); }
   else if(rk(home)<26 && rk(away)<26){ ctx += W.rankedBoth; why.unshift('Ranked matchup'); }

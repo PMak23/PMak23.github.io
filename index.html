@@ -574,7 +574,7 @@ function rate(key, ev){
     if(total>1 && sw && sw.length===2){
       const need = Math.ceil(total/2);
       const onBrink = sw.filter(w=>w===need-1).length; // teams one win from advancing
-      if(onBrink===2){ ctx += W.seriesDecider; why.push(`Game ${total}`); }
+      if(onBrink===2){ ctx += W.seriesDecider; why.push('Winner take all'); }
       else if(onBrink===1){ ctx += W.seriesElim; why.push('Elimination game'); }
       else why.push('Playoffs');
     } else why.push('Playoffs');
@@ -605,7 +605,7 @@ function rate(key, ev){
   if(hour>=17 && hour<=20){ ctx += W.evening; }
   const rk = x=>(x.curatedRank&&x.curatedRank.current)||99;
   if(rk(home)<=10 && rk(away)<=10){ ctx += W.rankedBoth + W.top10Showdown; why.unshift('Top 10 showdown'); }
-  else if(rk(home)<26 && rk(away)<26){ ctx += W.rankedBoth; why.unshift('Ranked matchup'); }
+  else if(rk(home)<26 && rk(away)<26){ ctx += W.rankedBoth; }
   else if(rk(home)<=10 || rk(away)<=10){ ctx += W.top10; }
 
   // hand-maintained watchability list (see WATCHABILITY above)
@@ -626,8 +626,6 @@ function rate(key, ev){
     if(twHome!=null && twAway!=null){
       const avgScore = (rankToScore(twHome) + rankToScore(twAway)) / 2;
       ctx += (avgScore-3)/2 * W.teamWatch * rankMult;
-      if(avgScore>=4) why.push('Star power');
-      else if(avgScore<=2) why.push('Tough watch');
     }
   }
 
@@ -689,7 +687,7 @@ function rate(key, ev){
     const alive = p => p >= 0.05;                                  // below 5% counts as functionally dead
     const tension = p => clamp(1 - Math.abs(p-0.5)/0.45, 0, 1);     // peaks at a true 50/50 race, fades to 0 by ~5%/95%
     let stakes;
-    if(!alive(pHome) && !alive(pAway)){ stakes = -1; if(hasRealStandings) why.push('Non-contenders'); }
+    if(!alive(pHome) && !alive(pAway)){ stakes = -1; }
     else {
       stakes = (tension(pHome)+tension(pAway))/2;
       if(hasRealStandings && stakes>=0.7) why.push('Playoff race');
@@ -734,10 +732,10 @@ function rate(key, ev){
     const spreadMult = quality01!=null ? 0.6 + 0.8*quality01 : 1.0;
     r = W.preBase + W.preSpread*close*spreadMult + ctx;
     comp01 = close; drama01 = close; // pregame "drama" is really just anticipation from the expected closeness
-    if(o && close>=0.8) why.unshift('Pick-em'); 
-    else if(o && close<=0.25) why.unshift('Heavy favorite');
   } else if(state==='in'){
     const {f, ot} = progress(sp, st);
+    // "Late" cutoff: baseball = start of the 7th inning; clock sports = start of the final period.
+    const LATE = sp.innings ? 6/sp.innings : 0.75;
     const close = clamp(1 - margin/(sp.unit*3),0,1);
     // Smoothly interpolated between the checkpoints in W — see comment up there.
     // The late-game portion (past the midpoint) is scaled by quality, so the
@@ -748,15 +746,16 @@ function rate(key, ev){
     const scaledOT   = W.timeMid + (W.timeOT  -W.timeMid)*qForMult;
     const timeMult = ot ? scaledOT
       : f<=0.5  ? W.timeStart + (W.timeMid-W.timeStart)*(f/0.5)
-      : f<=0.75 ? W.timeMid   + (scaledLate-W.timeMid)*((f-0.5)/0.25)
-      :           scaledLate  + (scaledEnd-scaledLate)*((f-0.75)/0.25);
+      : f<=LATE ? W.timeMid   + (scaledLate-W.timeMid)*((f-0.5)/(LATE-0.5))
+      :           scaledLate  + (scaledEnd-scaledLate)*((f-LATE)/(1-LATE));
     r = W.liveBase + W.liveClose*close*timeMult;
     if(ot){ r += W.otBonus; why.unshift(sp.innings?'Extra innings':'Overtime'); }
-    else if(f>=0.75 && margin<=sp.unit){ r += W.wireBonus; why.unshift('Down to the wire'); }
-    else if(margin<=sp.unit){ why.unshift('One-score game'); }
+    else if(f>=LATE && margin<=sp.unit){ r += W.wireBonus; why.unshift('Down to the wire'); }
+    else if(f>=0.5 && margin<=sp.unit){ why.unshift('One-score game'); } // halfway on; late = Down to the wire
     else if(close===0){ why.unshift('Blowout'); }
     const dogLeads = favHome!==null && margin>0 && ((favHome && as>hs) || (!favHome && hs>as));
-    if(dogLeads){ r += W.upsetBonus*dogScale; if(dogScale>=0.3) why.unshift('Upset brewing'); }
+    if(dogLeads){ r += W.upsetBonus*dogScale; }
+    const dogTag = dogLeads && dogScale>=0.3;
     // a ranked team trailing is newsworthy on its own — separate from the odds-based
     // upset bonus above, since a team's ranking and its betting line don't always agree.
     // Scaled by how highly ranked (rank 1 = full weight) AND by how close the game
@@ -778,7 +777,12 @@ function rate(key, ev){
     const bestRankScale = Math.max(rankScale(rk(home)), rankScale(rk(away)));
     const catchable = clamp(1 - margin/(sp.unit*5), 0, 1);
     const upsetTension = bestRankScale * catchable * (0.4 + 0.6*f);
-    if(upsetTension>0){ r += W.rankedTrailing*upsetTension; if(upsetTension>=0.15) why.unshift('Upset alert'); }
+    if(upsetTension>0){ r += W.rankedTrailing*upsetTension; }
+    // One upset tag at most (ratings above are unaffected — labels only):
+    // halfway to late = 'Upset brewing' (underdog leading), late = 'Upset alert'
+    // (underdog leading OR a ranked team in real upset danger). Nothing before halfway.
+    if(f>=LATE && (dogTag || upsetTension>=0.15)) why.unshift('Upset alert');
+    else if(f>=0.5 && f<LATE && dogTag) why.unshift('Upset brewing');
     r += ctx;
     // Competitiveness: still primarily the current margin, but a tie/close
     // score is trusted more the longer it's held up — the same 3-3 tie means
@@ -788,13 +792,13 @@ function rate(key, ev){
     // urgency is urgency regardless of who's playing; that's Stakes' job.
     const dramaTimeMult = ot ? W.timeOT
       : f<=0.5  ? W.timeStart + (W.timeMid-W.timeStart)*(f/0.5)
-      : f<=0.75 ? W.timeMid   + (W.timeLate-W.timeMid)*((f-0.5)/0.25)
-      :           W.timeLate  + (W.timeEnd-W.timeLate)*((f-0.75)/0.25);
+      : f<=LATE ? W.timeMid   + (W.timeLate-W.timeMid)*((f-0.5)/(LATE-0.5))
+      :           W.timeLate  + (W.timeEnd-W.timeLate)*((f-LATE)/(1-LATE));
     // Normalized against its own max (not shifted to a hard zero at kickoff) —
     // dramaTimeMult is never actually zero, so this shouldn't be either.
     let dramaRaw = clamp(close * (dramaTimeMult/W.timeOT), 0, 1);
     if(ot) dramaRaw = Math.max(dramaRaw, 0.9);
-    if(f>=0.75 && margin<=sp.unit) dramaRaw = Math.max(dramaRaw, 0.7);
+    if(f>=LATE && margin<=sp.unit) dramaRaw = Math.max(dramaRaw, 0.7);
     if(dogScale>=0.3) dramaRaw = Math.max(dramaRaw, 0.5+dogScale*0.4);
     if(upsetTension>=0.15) dramaRaw = Math.max(dramaRaw, 0.5+upsetTension*0.4);
     drama01 = clamp(dramaRaw, 0, 1);

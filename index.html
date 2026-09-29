@@ -229,11 +229,9 @@ const WATCHABILITY = {
 // run by searching "mlb playoff picture" or "mlb wild card standings" for
 // the current week, same idea as the CFB/MLB lists above.
 const PLAYOFF_RACE = {
-  // FINAL DAY, Sept 27, 2026. Everything else is locked (verified vs ESPN standings).
-  HOU:5, TEX:5,  // AL West + #3 seed: HOU clinches with a win (owns tiebreaker); TEX needs win + HOU loss. Loser goes home.
-  PHI:5, ARI:5,  // NL #6 seed: PHI up 1, ARI owns tiebreaker. ARI needs win + PHI loss.
-  // Locked: TB #1, CLE #2, NYY #4, BOS #5, CHW #6 | MIL #1, LAD #2, ATL #3, SD #4, CHC #5.
-  // Regular season ends today, so this list has no effect after tonight.
+  // EMPTY for the 2026 postseason (regular season ended Sept 27). Postseason
+  // games skip the race/standings math entirely and are rated by W.playoff +
+  // series context instead. Refill next September.
 };
 
 // Team quality/brand rank per sport, 1 (best/most notable) to N (worst) — lower
@@ -552,7 +550,8 @@ function rate(key, ev){
 
   // context
   let ctx = (sp.interest||0) * W.sportInterest;
-  if(ev.season && ev.season.type === 3){
+  const isPost = !!(ev.season && ev.season.type === 3);
+  if(isPost){
     ctx += W.playoff;
     // Series context from ESPN (best-of-3/5/7). Single-game rounds (NFL) have
     // no series data and are unaffected.
@@ -572,7 +571,7 @@ function rate(key, ev){
   const IGNORE_NETS = ['MLB.TV'];
   // Streaming-only services ESPN also tags "national" — still shown as where
   // to watch, but they don't earn the national TV / primetime bonus.
-  const STREAMING = ['ESPN+'];
+  const STREAMING = ['ESPN+', 'Peacock'];
   const natSet = new Set(), locSet = new Set();
   (c.broadcasts||[]).forEach(b=>{
     const isNat = (b.market||'').toLowerCase()==='national';
@@ -671,7 +670,10 @@ function rate(key, ev){
     };
     pHome = winPct(home); pAway = winPct(away);
   }
-  if(pHome!=null && pAway!=null){
+  // Postseason: every team is a playoff team, and regular-season standings /
+  // race math would hand out stale "Playoff race" boosts. W.playoff + series
+  // context above already cover it.
+  if(!isPost && pHome!=null && pAway!=null){
     const alive = p => p >= 0.05;                                  // below 5% counts as functionally dead
     const tension = p => clamp(1 - Math.abs(p-0.5)/0.45, 0, 1);     // peaks at a true 50/50 race, fades to 0 by ~5%/95%
     let stakes;
@@ -697,7 +699,7 @@ function rate(key, ev){
     if(key==='mlb' && Object.keys(PLAYOFF_RACE).length) return handVal||0;
     return liveVal!=null ? liveVal : (handVal||0);
   };
-  const raceHome = raceFor(home.team.abbreviation), raceAway = raceFor(away.team.abbreviation);
+  const raceHome = isPost ? 0 : raceFor(home.team.abbreviation), raceAway = isPost ? 0 : raceFor(away.team.abbreviation);
   if(raceHome>0 || raceAway>0){
     // Same reason as the standings boost above (team is in a playoff race), so only
     // add whatever the race boost adds BEYOND that — not both stacked.

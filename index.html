@@ -575,7 +575,14 @@ function rate(key, ev){
       const need = Math.ceil(total/2);
       const onBrink = sw.filter(w=>w===need-1).length; // teams one win from advancing
       if(onBrink===2){ ctx += W.seriesDecider; why.push('Winner take all'); }
-      else if(onBrink===1){ ctx += W.seriesElim; why.push('Elimination game'); }
+      else if(onBrink===1){
+        ctx += W.seriesElim;
+        // The team facing elimination is the one NOT one win from advancing.
+        const facing = (sr.competitors||[]).find(x=>(+x.wins||0)!==need-1);
+        const fc = facing && c.competitors.find(x=>String(x.id)===String(facing.id));
+        const ab = fc && fc.team && fc.team.abbreviation;
+        why.push(ab ? `Elimination game: ${ab}` : 'Elimination game');
+      }
       else why.push('Playoffs');
     } else why.push('Playoffs');
   }

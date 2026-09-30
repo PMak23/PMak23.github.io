@@ -907,21 +907,27 @@ function renderList(games){
     return d.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
   };
   const upcoming = by('pre');
-  if(upcoming.length){
-    html += '<h2>Coming up</h2>';
-    const groups = new Map(); // dayKey -> {date, games}
-    upcoming.forEach(g=>{
-      const d = new Date(g.ev.date);
-      const k = dayKey(d);
-      if(!groups.has(k)) groups.set(k, {date:d, games:[]});
-      groups.get(k).games.push(g);
-    });
-    [...groups.values()].sort((a,b)=>a.date-b.date).forEach(({date, games})=>{
+  const groups = new Map(); // dayKey -> {date, games}
+  upcoming.forEach(g=>{
+    const d = new Date(g.ev.date);
+    const k = dayKey(d);
+    if(!groups.has(k)) groups.set(k, {date:d, games:[]});
+    groups.get(k).games.push(g);
+  });
+  const days = [...groups.values()].sort((a,b)=>a.date-b.date);
+  const todayKey = dayKey(new Date());
+  // Order: Live, today's upcoming, Final, then later days — so today's
+  // results aren't buried under tomorrow's slate.
+  const todayGrp = days.find(d=>dayKey(d.date)===todayKey);
+  const later = days.filter(d=>dayKey(d.date)!==todayKey);
+  if(todayGrp) html += '<h2>Coming up</h2><h3 class="day">Today</h3>' + todayGrp.games.map(card).join('');
+  sec('Final', by('post'));
+  if(later.length){
+    html += `<h2>${todayGrp ? 'Later' : 'Coming up'}</h2>`;
+    later.forEach(({date, games})=>{
       html += `<h3 class="day">${dayLabel(date)}</h3>` + games.map(card).join('');
     });
   }
-
-  sec('Final', by('post'));
   if(errs.length) html += `<div class="err">Couldn't load ${errs.join(', ')}. Try again in a minute.</div>`;
   if(!html) html = '<div class="empty">No games today for the sports you picked.</div>';
   list.innerHTML = html;

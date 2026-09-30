@@ -174,10 +174,10 @@ const SPORTS = { // MLB interest lowered 0.1 -> -0.5 on Sept 26 (baseball moneyl
   nfl:  {name:'NFL', games:17,  path:'football/nfl/scoreboard',                       standingsPath:'football/nfl/standings', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:0.8},
   cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:-0.2, hasRanking:true}, // interest was 0.6; lowered Sept 26 — CFB rated too high vs everything else
   mlb:  {name:'MLB', daily:true, games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:-0.5, innings:9},
-  nba:  {name:'NBA', daily:true, games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
+  nba:  {name:'NBA', daily:true, games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, closeAt:15, blowoutAt:[30,25], spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
   nhl:  {name:'NHL', daily:true, games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
-  cbb:  {name:'CBB', daily:true,  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
-  wnba: {name:'WNBA', daily:true, path:'basketball/wnba/scoreboard',                     standingsPath:'basketball/wnba/standings', unit:3, spreadBased:true, interest:-0.3, periods:4, len:10, clockDown:true},
+  cbb:  {name:'CBB', daily:true,  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, closeAt:15, blowoutAt:[30,25], spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
+  wnba: {name:'WNBA', daily:true, path:'basketball/wnba/scoreboard',                     standingsPath:'basketball/wnba/standings', unit:3, closeAt:15, blowoutAt:[30,25], spreadBased:true, interest:-0.3, periods:4, len:10, clockDown:true},
   mls:  {name:'MLS',  path:'soccer/usa.1/scoreboard',                        unit:1, interest:-0.4, periods:2, len:45, clockDown:false},
   epl:  {name:'EPL',  path:'soccer/eng.1/scoreboard',                        unit:1, interest:-0.2, periods:2, len:45, clockDown:false},
 };
@@ -743,7 +743,12 @@ function rate(key, ev){
     const {f, ot} = progress(sp, st);
     // "Late" cutoff: baseball = start of the 7th inning; clock sports = start of the final period.
     const LATE = sp.innings ? 6/sp.innings : 0.75;
-    const close = clamp(1 - margin/(sp.unit*3),0,1);
+    // Live games: basketball uses closeAt (15 pts) as the zero-closeness line,
+    // since a 9-12 pt lead is still catchable. Finished games keep unit*3.
+    let close = clamp(1 - margin/(sp.closeAt || sp.unit*3),0,1);
+    // Basketball: comebacks from 15-25 down happen, so any game short of the
+    // Blowout line keeps at least 10% closeness credit (no tag for it).
+    if(sp.blowoutAt && margin < sp.blowoutAt[f<0.5?0:1]) close = Math.max(close, 0.10);
     // Smoothly interpolated between the checkpoints in W — see comment up there.
     // The late-game portion (past the midpoint) is scaled by quality, so the
     // full escalation is reserved for genuinely notable teams, not any tied game.
@@ -759,7 +764,7 @@ function rate(key, ev){
     if(ot){ r += W.otBonus; why.unshift(sp.innings?'Extra innings':'Overtime'); }
     else if(f>=LATE && margin<=sp.unit){ r += W.wireBonus; why.unshift('Down to the wire'); }
     else if(f>=0.5 && margin<=sp.unit){ why.unshift('One-score game'); } // halfway on; late = Down to the wire
-    else if(close===0){ why.unshift('Blowout'); }
+    else if(sp.blowoutAt ? margin>=sp.blowoutAt[f<0.5?0:1] : close===0){ why.unshift('Blowout'); } // basketball: 30+ 1st half, 25+ 2nd half; others: 3+ scores
     const dogLeads = favHome!==null && margin>0 && ((favHome && as>hs) || (!favHome && hs>as));
     if(dogLeads){ r += W.upsetBonus*dogScale; }
     const dogTag = dogLeads && dogScale>=0.3;

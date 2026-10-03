@@ -175,7 +175,7 @@ const SPORTS = { // MLB interest lowered 0.1 -> -0.5 on Sept 26 (baseball moneyl
   cfb:  {name:'CFB',  path:'football/college-football/scoreboard?groups=80&limit=100', unit:8, spreadBased:true, periods:4, len:15, clockDown:true, interest:-0.2, hasRanking:true}, // interest was 0.6; lowered Sept 26 — CFB rated too high vs everything else
   mlb:  {name:'MLB', daily:true, games:162,  path:'baseball/mlb/scoreboard',                        standingsPath:'baseball/mlb/standings', unit:4, interest:-0.5, innings:9},
   nba:  {name:'NBA', daily:true, games:82,  path:'basketball/nba/scoreboard',                      standingsPath:'basketball/nba/standings', unit:3, closeAt:15, blowoutAt:[30,25], spreadBased:true, periods:4, len:12, clockDown:true, interest:0.5},
-  nhl:  {name:'NHL', daily:true, games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-0.1, periods:3, len:20, clockDown:true},
+  nhl:  {name:'NHL', daily:true, games:84,  path:'hockey/nhl/scoreboard',                          standingsPath:'hockey/nhl/standings', unit:1, interest:-1.0, periods:3, len:20, clockDown:true}, // interest -0.1 -> -1.0 Oct 3: low national viewership (~546K avg regular season) + hockey moneylines always read close
   cbb:  {name:'CBB', daily:true,  path:'basketball/mens-college-basketball/scoreboard?groups=50&limit=100', unit:3, closeAt:15, blowoutAt:[30,25], spreadBased:true, interest:0.3, periods:2, len:20, clockDown:true, hasRanking:true},
   wnba: {name:'WNBA', daily:true, path:'basketball/wnba/scoreboard',                     standingsPath:'basketball/wnba/standings', unit:3, closeAt:15, blowoutAt:[30,25], spreadBased:true, interest:-0.3, periods:4, len:10, clockDown:true},
   mls:  {name:'MLS',  path:'soccer/usa.1/scoreboard',                        unit:1, interest:-0.4, periods:2, len:45, clockDown:false},
@@ -529,7 +529,7 @@ function rate(key, ev){
     const share = p <= W.rampPoint
       ? W.rampMid * p/W.rampPoint
       : Math.min(W.rampMax, W.rampMid + (W.rampMax-W.rampMid) * (p-W.rampPoint)/W.rampPoint);
-    rankMult = (1-share)/0.5; standMult = share/0.5;
+    rankMult = Math.min(1, (1-share)/0.5); standMult = share/0.5; // capped at 1.0 Oct 3 — early season was boosting rankings ~1.9x while standings added nothing yet
   }
 
   // odds

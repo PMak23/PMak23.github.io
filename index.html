@@ -183,43 +183,30 @@ const SPORTS = { // MLB interest lowered 0.1 -> -0.5 on Sept 26 (baseball moneyl
 };
 const DEFAULT_ON = ['nfl','cfb','mlb'];
 
-// Update this by hand once a week. Week 4 (Sept 26, 2026) comes from USA TODAY's
-// "Watchability tiers" (Paul Myerberg) because Covers' Week 4 page wouldn't load.
-// Tier 1 = 5, Tier 2 = 4, Tier 3 = 2, Tier 4 = 1 (ranked-team games only for 3/4).
+// Update this by hand once a week. Week 5 (Oct 3, 2026) comes straight from
+// Covers' "Top 25 Predictions: Watchability Ratings" (Rob Paul) — its X/5 rating is used as-is.
 // Key = both teams' abbreviations AS SHOWN IN THIS APP, sorted alphabetically,
 // joined with a dash, so it doesn't matter who's home/away.
 // Scale: 5 = must-watch, 3 = average (no effect), 1 = skip it.
 // Keys = both ESPN abbreviations, sorted A-Z, joined by '-'. Use ESPN's exact codes
 // (TA&M not TXAM, MIZ not MIZZ, NCSU not NCST, IU/NU, BOIS) or the entry silently does nothing.
 const WATCHABILITY = {
-  'IU-NU':     5,   // Northwestern at Indiana (Fri)
-  'CAL-CLEM':   5,   // Clemson at Cal (Fri)
-  'TENN-TEX':   5,   // Texas at Tennessee
-  'OU-UGA':     5,   // Oklahoma at Georgia
-  'FLA-MISS':   5,   // Ole Miss at Florida
-  'IOWA-MICH':  5,   // Iowa at Michigan
-  'BOIS-WMU':    5,   // Boise State at Western Michigan
-  'LSU-TA&M':   5,   // Texas A&M at LSU
-  'ORE-USC':    5,   // Oregon at USC
-  'MIZ-MSST':  5,   // Missouri at Mississippi State
-  'ILL-OSU':    4,   // Illinois at Ohio State
-  'LOU-WAKE':   4,   // Wake Forest at Louisville
-  'BAY-COLO':   4,   // Colorado at Baylor
-  'MD-UCLA':    4,   // UCLA at Maryland
-  'ND-PUR':     4,   // Notre Dame at Purdue
-  'NMSU-UNM':   4,   // New Mexico at New Mexico State
-  'AUB-VAN':    4,   // Vanderbilt at Auburn
-  'PSU-WIS':    4,   // Wisconsin at Penn State
-  'MSU-NEB':    4,   // Nebraska at Michigan State
-  'ALA-SC':     4,   // South Carolina at Alabama
-  'OKST-WVU':   4,   // Oklahoma State at West Virginia
-  'APP-NCSU':   4,   // App State at NC State
-  'ARK-TLSA':   4,   // Tulsa at Arkansas
-  'ISU-UTAH':   2,   // Utah at Iowa State
-  'CMU-MIA':    2,   // Central Michigan at Miami
-  'MINN-WASH':  2,   // Minnesota at Washington
-  'SHSU-TTU':   1,   // Sam Houston at Texas Tech
-  'MOST-SMU':   1,   // Missouri State at SMU
+  'ALA-MSST':   5,   // Alabama at Mississippi State
+  'IOWA-OSU':   5,   // Ohio State at Iowa (GameDay)
+  'AUB-TENN':   4,   // Auburn at Tennessee
+  'FLA-MIZ':    4,   // Missouri at Florida
+  'SC-UK':      3,   // Kentucky at South Carolina
+  'USC-WASH':   3,   // Washington at USC
+  'UGA-VAN':    2,   // Vanderbilt at Georgia
+  'CLEM-MIA':   2,   // Clemson at Miami
+  'ND-UNC':     2,   // North Carolina at Notre Dame
+  'HOU-UCF':    2,   // UCF at Houston
+  'BYU-TCU':    2,   // TCU at BYU
+  'BC-SMU':     2,   // Boston College at SMU
+  'BOIS-USU':   2,   // Utah State at Boise State
+  'COLO-TTU':   1,   // Colorado at Texas Tech
+  'IU-RUTG':    1,   // Rutgers at Indiana
+  'LSU-MCN':    1,   // McNeese at LSU
 };
 
 // Live playoff-SEEDING race, separate from the standings signal elsewhere in
@@ -243,11 +230,11 @@ const PLAYOFF_RACE = {
 // actually plays out — search "[league] power rankings" for the current
 // week (ESPN, Sportsnaut, theScore all publish one) and replace the list.
 const TEAM_QUALITY = {
-  nfl: { // NFL.com Power Rankings, Week 3 (post-Week-2, Sept 22, 2026) — 32 teams
-    SEA:1, BUF:2, CIN:3, KC:4, BAL:5, DEN:6, SF:7, LAR:8, JAX:9, PHI:10,
-    HOU:11, DAL:12, DET:13, NO:14, MIN:15, CHI:16, CAR:17, NE:18, IND:19, GB:20,
-    NYG:21, LV:22, CLE:23, TB:24, NYJ:25, PIT:26, TEN:27, WSH:28, LAC:29, ARI:30,
-    ATL:31, MIA:32,
+  nfl: { // SportsBrackets.net consensus Power Rankings, Week 4 (Sept 29, 2026; blend of ESPN, The Athletic, PFN, Yahoo, Sharp) — 32 teams
+    SF:1, BUF:2, KC:3, SEA:4, JAX:5, DEN:6, MIN:7, BAL:8, LAR:9, PHI:10,
+    CIN:11, DET:12, LV:13, PIT:14, CHI:15, NE:16, DAL:17, NO:18, CAR:19, WSH:20,
+    IND:21, ATL:22, CLE:23, HOU:24, NYG:25, GB:26, NYJ:27, LAC:28, ARI:29, TB:30,
+    TEN:31, MIA:32,
   },
   mlb: { // MLB.com Power Rankings, final regular-season edition (Sept 21, 2026) — 30 teams
     MIL:1, LAD:2, TB:3, ATL:4, NYY:5, CHC:6, BOS:7, SD:8, PHI:9, CLE:10,

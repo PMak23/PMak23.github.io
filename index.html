@@ -334,6 +334,51 @@ async function fetchEspn(path){
     const r = await fetch('/espn/' + path); if(!r.ok) throw new Error(r.status); return await r.json();
   }
 }
+// Pregame odds cache (Oct 3). ESPN drops the line from the scoreboard once a game
+// starts, which broke the odds-based upset logic. The line can't change after kickoff,
+// so it's saved once per game: from the scoreboard while the game is still 'pre', or
+// from the game's summary page (pickcenter) if the app first sees it already live/final.
+// Stored in the same shape as a scoreboard odds object so rate() reads it unchanged.
+let pregameOdds = {};
+try{ pregameOdds = JSON.parse(localStorage.getItem('whatsOn.pregameOdds')) || {}; }catch(e){}
+const oddsTried = new Set(); // summary lookups already attempted this session (incl. failures)
+function savePregameOdds(){
+  // keep only the most recent ~400 games so storage doesn't grow forever
+  const ids = Object.keys(pregameOdds);
+  if(ids.length > 400) ids.slice(0, ids.length-400).forEach(id=>delete pregameOdds[id]);
+  try{ localStorage.setItem('whatsOn.pregameOdds', JSON.stringify(pregameOdds)); }catch(e){}
+}
+function oddsFromPick(pk){
+  if(!pk) return null;
+  const h = pk.homeTeamOdds||{}, a = pk.awayTeamOdds||{};
+  if(pk.spread==null && h.moneyLine==null && a.moneyLine==null) return null;
+  return { spread: pk.spread, details: pk.details,
+    homeTeamOdds:{favorite:!!h.favorite}, awayTeamOdds:{favorite:!!a.favorite},
+    moneyline:{ home:{close:{odds:h.moneyLine}}, away:{close:{odds:a.moneyLine}} } };
+}
+async function fillPregameOdds(key, events){
+  const sp = SPORTS[key];
+  let changed = false;
+  const need = [];
+  events.forEach(ev=>{
+    const c = (ev.competitions||[])[0]; if(!c) return;
+    const state = ev.status && ev.status.type && ev.status.type.state;
+    const live = (c.odds||[])[0];
+    if(state==='pre'){ if(live){ pregameOdds[ev.id] = live; changed = true; } return; }
+    if(live || pregameOdds[ev.id] || oddsTried.has(ev.id)) return;
+    need.push(ev.id);
+  });
+  const base = sp.path.split('?')[0].replace(/scoreboard$/, 'summary');
+  await Promise.all(need.map(async id=>{
+    oddsTried.add(id);
+    try{
+      const j = await fetchEspn(base + '?event=' + id);
+      const od = oddsFromPick((j.pickcenter||[])[0]);
+      if(od){ pregameOdds[id] = od; changed = true; }
+    }catch(e){}
+  }));
+  if(changed) savePregameOdds();
+}
 async function fetchLeague(key){
   const sp = SPORTS[key];
   const paths = [sp.path, ...(sp.extraPaths||[])];
@@ -534,7 +579,7 @@ function rate(key, ev){
   }
 
   // odds
-  const o = (c.odds||[])[0]; let favHome=null, spread=0, ml=0;
+  const o = (c.odds||[])[0] || pregameOdds[ev.id]; let favHome=null, spread=0, ml=0; // pregame line survives kickoff via cache
   if(o){
     spread = Math.abs(+o.spread||0);
     if(o.homeTeamOdds && o.homeTeamOdds.favorite) favHome = true;
@@ -774,10 +819,24 @@ function rate(key, ev){
     // closeness measure (a 2-score game still counts as real appointment viewing),
     // and weighted MORE as the game gets later, not less — that's specifically
     // when people tune in to see if it actually gets finished off.
+    // Oct 3: an upset is defined by the PREGAME LINE (handled above via dogScale).
+    // Rankings are only a backup when no line exists at all. Even then, only the
+    // better-ranked team can be the one getting upset: counts while it trails by
+    // up to 3 scores, or leads by less than 2 scores (underdog still has a shot).
     const rankScale = rv => rv<=25 ? (26-rv)/25 : 0;
-    const bestRankScale = Math.max(rankScale(rk(home)), rankScale(rk(away)));
-    const catchable = clamp(1 - margin/(sp.unit*5), 0, 1);
-    const upsetTension = bestRankScale * catchable * (0.4 + 0.6*f);
+    let upsetTension = 0;
+    if(favHome===null){
+      const rh = rk(home), ra = rk(away);
+      const betterHome = rh < ra;
+      const betterRank = Math.min(rh, ra);
+      if(betterRank<=25 && rh!==ra){
+        const betterScore = betterHome ? hs : as, otherScore = betterHome ? as : hs;
+        const catchable = betterScore < otherScore
+          ? clamp(1 - margin/(sp.unit*3), 0, 1)
+          : clamp(1 - margin/(sp.unit*2), 0, 1);
+        upsetTension = rankScale(betterRank) * catchable * (0.4 + 0.6*f);
+      }
+    }
     if(upsetTension>0){ r += W.rankedTrailing*upsetTension; }
     // One upset tag at most (ratings above are unaffected — labels only):
     // halfway to late = 'Upset brewing' (underdog leading), late = 'Upset alert'
@@ -939,7 +998,7 @@ async function refresh(){
   if(!on.length){ list.innerHTML='<div class="empty">Pick a sport above to see what\'s worth watching.</div>'; return; }
   on.forEach(k=>{ loadStandings(k); }); // fire-and-forget, cached after first success/failure
   const results = await Promise.all(on.map(async k=>{
-    try{ const j = await fetchLeague(k); return (j.events||[]).map(ev=>rate(k,ev)); }
+    try{ const j = await fetchLeague(k); await fillPregameOdds(k, j.events||[]); return (j.events||[]).map(ev=>rate(k,ev)); }
     catch(e){ return [{err:k}]; }
   }));
   lastGames = results.flat();

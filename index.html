@@ -142,8 +142,10 @@ const W = {
   upsetBonus: 1.0,    // underdog leading (plus up to +1 more for bigger dogs)
   playoff: 1.5,       // postseason game
   preseason: -3.0,    // exhibition game (ESPN season type 1) — starters often sit
-  seriesElim: 0.5,    // ADDITIONAL, playoff series game where one team can be eliminated
-  seriesDecider: 1.0, // ADDITIONAL (instead of seriesElim), winner-take-all final game of a series
+  seriesElim: 0.9,    // (was 0.5, raised Oct 7) ADDITIONAL, playoff series game where one team can be eliminated
+  seriesDecider: 1.4, // (was 1.0, raised Oct 7) ADDITIONAL (instead of seriesElim), winner-take-all final game of a series
+  elimImportanceFloor: 8.0,    // Importance display never shows below this when one team faces elimination
+  deciderImportanceFloor: 9.0, // Importance display never shows below this in a winner-take-all game
   national: 0.2,      // on national TV (kept minimal on purpose)
   evening: 0.1,       // starts 5 to 9 PM your time (kept minimal on purpose)
   rankedBoth: 0.7,    // both teams ranked (college)
@@ -597,6 +599,7 @@ function rate(key, ev){
   // context
   let ctx = (sp.interest||0) * W.sportInterest;
   const isPost = !!(ev.season && ev.season.type === 3);
+  let importanceFloor = 0; // 0..10, set below for elimination / winner-take-all games
   if(ev.season && ev.season.type === 1){ ctx += W.preseason; why.push('Preseason'); }
   if(isPost){
     ctx += W.playoff;
@@ -608,9 +611,10 @@ function rate(key, ev){
     if(total>1 && sw && sw.length===2){
       const need = Math.ceil(total/2);
       const onBrink = sw.filter(w=>w===need-1).length; // teams one win from advancing
-      if(onBrink===2){ ctx += W.seriesDecider; why.push('Winner take all'); }
+      if(onBrink===2){ ctx += W.seriesDecider; importanceFloor = W.deciderImportanceFloor; why.push('Winner take all'); }
       else if(onBrink===1){
         ctx += W.seriesElim;
+        importanceFloor = W.elimImportanceFloor;
         // The team facing elimination is the one NOT one win from advancing.
         const facing = (sr.competitors||[]).find(x=>(+x.wins||0)!==need-1);
         const fc = facing && c.competitors.find(x=>String(x.id)===String(facing.id));
@@ -899,7 +903,10 @@ function rate(key, ev){
   // is (sport interest, playoff, national TV, ranked/watchability, team quality,
   // standings). Normalized against a realistic ctx range, not the full
   // mathematical extreme, so a genuinely stakes-heavy game reaches the top.
-  const stakes01 = clamp((ctx - W.stakesFloor) / W.stakesRange, 0, 1);
+  // Elimination games: Importance is about what's on the line, so a low sport
+  // baseline (MLB, NHL) can't drag it under the floor. Display only; the rating
+  // itself still respects each league's caps.
+  const stakes01 = Math.max(clamp((ctx - W.stakesFloor) / W.stakesRange, 0, 1), importanceFloor/10);
   return { r: clamp(Math.round(Math.min(shown,qCap)*10)/10,1,10),
     comp: Math.round(comp01*100)/10, drama: Math.round(drama01*100)/10, stakes: Math.round(stakes01*100)/10,
     state, home, away, hs, as, st, nets, isNational, why: why.slice(0,3), ev, key };
